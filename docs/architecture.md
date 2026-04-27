@@ -2,7 +2,7 @@
 
 ## Goal
 
-Produce AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** for use as the targets of a cloud-hosted Android device farm. v1 spoofs Samsung Galaxy S24 Ultra (SM-S928B); the schema in [`/customos.yaml`](../customos.yaml) accepts arbitrarily many profiles.
+Produce AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** for use as the targets of a cloud-hosted Android device farm. v1 spoofs Samsung Galaxy S25 Ultra (SM-S938B); the schema in [`/customos.yaml`](../customos.yaml) accepts arbitrarily many profiles.
 
 Concrete properties of every produced image:
 
@@ -24,7 +24,7 @@ flowchart LR
         Repo[tech-sumit/android-oem-pipeline]
         Cfg --> Repo
         Repo --> CA[ca/ - public PEMs]
-        Repo --> DT[device-tree/customos/galaxy-s24-ultra]
+        Repo --> DT[device-tree/customos/galaxy-s25-ultra]
         Repo --> DF[docker/Dockerfile]
         Repo --> Vast[vast/*.sh]
     end
@@ -129,6 +129,20 @@ This split means we can:
 
 This trades two minor edits per profile change for zero codegen, zero dynamic templating, and a `.mk` file that Android engineers can read and review without learning a new tool. v2 may revisit if the parity surface grows past ~5 keys.
 
+#### Why Android 15 props on an Android 16 base
+
+The v1 `galaxy-s25-ultra` profile is an **intentional version mismatch**: the AOSP source we compile (`android-16.0.0_r4` per `customos.yaml`) is Android 16, but the spoofed `ro.build.version.release` (`15`), `ro.build.version.sdk` (`35`), `ro.build.version.security_patch` (`2025-01-01`), and `BUILD_FINGERPRINT` (`samsung/e3qxxx/e3q:15/AP3A.240905.015.A2/S938BXXU1AYA1:user/release-keys`) all advertise Android 15 / One UI 7, which is what a real S25 Ultra in the wild reports today (the device shipped on Android 15 and One UI 7 has not yet been superseded for the SM-S938B SKU at the time of writing).
+
+The reason is the value the spoof is purchased for: SDK / analytics / anti-fraud bytecode keys off the **advertised** version, not the kernel's real one. If we advertised `release=16 / sdk=36`, our images would stand out as "the one Cuttlefish that claims to be S25 Ultra running Android 16 before any retail unit does" &mdash; the inverse of the goal.
+
+The risk surface is bounded:
+
+- AOSP-16 framework code paths still run under the hood; any feature an app gates on `Build.VERSION.SDK_INT >= 35` is satisfied either way (35 <= 36).
+- Apps that probe deeper (e.g. presence of a specific Android 16-only `@SystemApi`) will see a contradiction. We accept this for v1; if it bites a real test, the fix is to drop back to `android-15.0.0_*` for the AOSP base and rebuild.
+- The parity check (`pipeline/hooks/before-build.sh` + `validate-config` in `lint.yml`) does **not** validate the advertised vs base version; it only validates `customos.yaml` <-> `.mk` consistency. The version mismatch is therefore deliberate and silent.
+
+When the real device's advertised version moves (e.g. an OTA pushes the S25 Ultra to Android 16 / One UI 8), update `spoof.android_version_advertised` and the `ro.build.version.*` lines in the `.mk`; consider also bumping `aosp.branch` to the matching `android-16.0.0_r*` if you want to close the gap.
+
 ### 5. CA injection: v1 system cacerts, v2 Conscrypt APEX
 
 Android 14+ moved the runtime trust store into the Conscrypt APEX module. Anchors in `/system/etc/security/cacerts/` are still copied into the system, but per [the Conscrypt APEX docs](conscrypt-apex.md), the runtime resolver consults the APEX-bundled `/apex/com.android.conscrypt/cacerts/` first.
@@ -206,8 +220,8 @@ To boot a specific profile (Linux + KVM only):
 ```bash
 sudo apt install -y google-cuttlefish-base
 mkdir cf && cd cf
-tar xvf ../out/galaxy-s24-ultra/cvd-host_package.tar.gz
-unzip ../out/galaxy-s24-ultra/galaxy-s24-ultra-img-*.zip
+tar xvf ../out/galaxy-s25-ultra/cvd-host_package.tar.gz
+unzip ../out/galaxy-s25-ultra/galaxy-s25-ultra-img-*.zip
 HOME=$PWD ./bin/launch_cvd
 adb shell getprop ro.product.brand   # -> samsung
 ```

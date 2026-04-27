@@ -1,6 +1,6 @@
 # android-oem-pipeline
 
-> **CustomOS Device Farm** &mdash; a build pipeline that produces AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** (Samsung Galaxy S24 Ultra in v1, more profiles to follow) for use as the targets of a cloud-hosted, GPU-accelerated Android device farm.
+> **CustomOS Device Farm** &mdash; a build pipeline that produces AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** (Samsung Galaxy S25 Ultra in v1, more profiles to follow) for use as the targets of a cloud-hosted, GPU-accelerated Android device farm.
 
 This repository builds the **images**. The runtime that schedules hundreds of these emulators per GPU host and exposes adb-over-tcp to external test runners is described in [`docs/device-farm.md`](docs/device-farm.md) and is intentionally not implemented in v1; the build pipeline is independently useful.
 
@@ -8,7 +8,7 @@ This repository builds the **images**. The runtime that schedules hundreds of th
 |---|---|
 | **AOSP base** | `android-16.0.0_r4` |
 | **Target** | Cuttlefish (`vsoc_x86_64`), `gfxstream` GPU mode |
-| **v1 profile** | `galaxy-s24-ultra` (Samsung SM-S928B; fingerprint `samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys`) |
+| **v1 profile** | `galaxy-s25-ultra` (Samsung SM-S938B; fingerprint `samsung/e3qxxx/e3q:15/AP3A.240905.015.A2/S938BXXU1AYA1:user/release-keys`; advertises Android 15 / One UI 7 from an AOSP 16 base &mdash; see `docs/architecture.md`) |
 | **Build host** | Vast.ai rented instance, ~32 vCPU / 64 GB / 1 TB NVMe |
 | **Cold-build cost** | ~$2.50 / ~5-7 h |
 | **CA injection** | v1: `/system/etc/security/cacerts/` baked at build time. v2: Conscrypt APEX rebuild (planned) |
@@ -30,14 +30,14 @@ Everything that makes a build a build &mdash; AOSP branch, lunch target, brandin
 ```yaml
 # excerpt -- see customos.yaml for the full schema
 profiles:
-  - id: galaxy-s24-ultra
+  - id: galaxy-s25-ultra
     enabled: true
-    lunch_target: customos_cf_s24ultra-userdebug
+    lunch_target: customos_cf_s25ultra-userdebug
     spoof:
       brand: samsung
       manufacturer: samsung
-      model: SM-S928B
-      build_fingerprint: "samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys"
+      model: SM-S938B
+      build_fingerprint: "samsung/e3qxxx/e3q:15/AP3A.240905.015.A2/S938BXXU1AYA1:user/release-keys"
     display:
       width_px: 1440
       height_px: 3120
@@ -122,7 +122,7 @@ gh auth login
 
 # 2. sync + build (mounts customos.yaml at /srv/config/ in the container)
 ./vast/sync-source.sh
-PROFILES=galaxy-s24-ultra ./vast/kick-build.sh
+PROFILES=galaxy-s25-ultra ./vast/kick-build.sh
 
 # 3. fetch artifacts
 ./vast/fetch-artifacts.sh              # rsync /srv/out/ -> ./out/<ts>/
@@ -139,8 +139,8 @@ PROFILES=galaxy-s24-ultra ./vast/kick-build.sh
 # Linux only; Cuttlefish needs KVM (won't run on Windows / macOS hosts).
 sudo apt install -y google-cuttlefish-base
 mkdir cf && cd cf
-tar xf ../out/galaxy-s24-ultra/cvd-host_package.tar.gz
-unzip ../out/galaxy-s24-ultra/galaxy-s24-ultra-img-*.zip
+tar xf ../out/galaxy-s25-ultra/cvd-host_package.tar.gz
+unzip ../out/galaxy-s25-ultra/galaxy-s25-ultra-img-*.zip
 HOME=$PWD ./bin/launch_cvd
 # In another terminal:
 adb shell getprop ro.product.brand   # -> samsung
@@ -155,7 +155,7 @@ adb shell getprop ro.build.fingerprint
 ├── customos.yaml          single source of truth (multi-profile schema)
 ├── docker/                AOSP build container (Ubuntu 22.04 + JDK 21 + ccache + repo + yq)
 ├── device-tree/customos/
-│   └── galaxy-s24-ultra/  v1 profile - Samsung SM-S928B spoof + features XML
+│   └── galaxy-s25-ultra/  v1 profile - Samsung SM-S938B spoof + features XML
 ├── manifests/             repo local_manifests fragment (placeholder)
 ├── ca/                    public root CA PEMs (private keys are gitignored)
 ├── pipeline/              container entrypoint + per-phase hooks
@@ -194,7 +194,7 @@ adb shell getprop ro.build.fingerprint
 
 ## Roadmap
 
-- [x] v1 build pipeline + Galaxy S24 Ultra profile
+- [x] v1 build pipeline + Galaxy S25 Ultra profile
 - [x] CI-driven workflow with R2 + GH Release
 - [x] Spoof parity lint
 - [ ] First successful AOSP 16 build on Vast.ai (will fire when this PR's predecessor lands and we kick a build)
