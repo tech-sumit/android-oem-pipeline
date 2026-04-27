@@ -21,9 +21,33 @@ require() {
 
 ensure_vastai_auth() {
     require vastai
-    [[ -f "$KEY_FILE" ]] || die "missing API key file: ${KEY_FILE} (echo <key> > vast_api_key && chmod 600 vast_api_key)"
-    # 'vastai set api-key' is idempotent and persists to ~/.vast_api_key.
-    vastai set api-key "$(cat "$KEY_FILE")" >/dev/null
+
+    # 1. Prefer a vast_api_key file at the repo root (CI / first-time setup).
+    if [[ -f "$KEY_FILE" ]]; then
+        vastai set api-key "$(cat "$KEY_FILE")" >/dev/null
+        return 0
+    fi
+
+    # 2. Fall back to a key already configured via `vastai set api-key` previously.
+    #    The CLI stores it at ~/.config/vastai/vast_api_key on Linux.
+    local cli_store
+    for cli_store in \
+        "$HOME/.config/vastai/vast_api_key" \
+        "$HOME/.vast_api_key"; do
+        if [[ -s "$cli_store" ]]; then
+            return 0
+        fi
+    done
+
+    # 3. Last resort: probe the CLI itself. If `vastai show user` works, auth
+    #    is fine even though we can't see where the key lives.
+    if vastai show user --raw >/dev/null 2>&1; then
+        return 0
+    fi
+
+    die "no Vast.ai credentials found. Either:
+       - drop your key into ${KEY_FILE} and chmod 600, o
+       - run: vastai set api-key <YOUR_KEY>"
 }
 
 current_instance_id() {

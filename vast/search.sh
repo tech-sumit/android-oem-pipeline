@@ -36,11 +36,14 @@ QUERY="rentable=true verified=true \
        dph_total<=${DPH_MAX} \
        cuda_max_good>=0"
 
+# NOTE: We pass the python script via `-c` (not stdin) so the JSON stream from
+# vastai stays piped into sys.stdin. Earlier versions used `python3 - <<'PY'`
+# which silently dropped the pipe (shellcheck SC2259).
 vastai search offers "$QUERY" \
     --order 'dph_total' \
     --limit "$TOP_N" \
     --raw 2>/dev/null \
-| python3 - "$TOP_N" <<'PY'
+| python3 -c "$(cat <<'PY'
 import json, sys
 
 top_n = int(sys.argv[1])
@@ -49,7 +52,7 @@ if not offers:
     print("no offers match. Loosen DPH_MAX or CPU_MIN.", file=sys.stderr)
     sys.exit(1)
 
-cols = ("id", "$/hr", "vCPU", "RAM(G)", "Disk(G)", "↓Mbps", "↑Mbps", "host")
+cols = ("id", "$/hr", "vCPU", "RAM(G)", "Disk(G)", "Down", "Up", "host")
 print(f"{cols[0]:>9}  {cols[1]:>5}  {cols[2]:>5}  {cols[3]:>6}  {cols[4]:>7}  {cols[5]:>6}  {cols[6]:>6}  {cols[7]}")
 print("-" * 90)
 for o in offers[:top_n]:
@@ -65,3 +68,4 @@ for o in offers[:top_n]:
 print()
 print("Provision with: ./vast/provision.sh <id>")
 PY
+)" "$TOP_N"

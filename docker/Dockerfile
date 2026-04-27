@@ -67,7 +67,7 @@ RUN install -d /usr/local/bin && \
 ARG BUILD_UID=1000
 ARG BUILD_GID=1000
 RUN groupadd -g "${BUILD_GID}" build \
-    && useradd -m -u "${BUILD_UID}" -g build -s /bin/bash build \
+    && useradd -l -m -u "${BUILD_UID}" -g build -s /bin/bash build \
     && echo "build ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/build
 
 # ---------------------------------------------------------------------------

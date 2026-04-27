@@ -32,6 +32,10 @@ jobs:
         with:
           dockerfile: docker/Dockerfile
           failure-threshold: erro
+          # DL3008 (pin apt versions): impractical for AOSP build deps that
+          # must float with Ubuntu LTS minor updates. Pinning would force
+          # constant bumps and diverge from the upstream AOSP build env guide.
+          ignore: DL3008
 
   gitleaks:
     name: secret scan
