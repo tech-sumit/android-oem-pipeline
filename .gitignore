@@ -1,0 +1,39 @@
+# --- secrets ----------------------------------------------------------------
+# Never commit private keys or API tokens.
+*.key
+*.pem.key
+ca/*.key
+ca/*-private*
+vast_api_key
+vast_api_key.txt
+.env
+.env.*
+!.env.example
+
+# --- AOSP build outputs (massive, regenerated on every build) ---------------
+out/
+out-*/
+ccache/
+.ccache/
+.repo/
+src/
+mirror/
+
+# --- Vast.ai state ----------------------------------------------------------
+vast/.instance_id
+vast/.last_offe
+vast/known_hosts
+
+# --- Editor / OS noise ------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# --- Logs and tmp -----------------------------------------------------------
+logs/
+*.log
+tmp/
+.tmp/

@@ -1,0 +1,12 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.mk text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.png binary
+*.jpg binary
+*.gz binary
+*.zip binary
+*.0 binary

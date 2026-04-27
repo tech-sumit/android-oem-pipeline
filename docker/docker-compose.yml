@@ -1,0 +1,56 @@
+# Local-build option for users with a beefy Linux host (~600 GB free, 32+ GB RAM).
+#
+# This is NOT the primary path -- the primary path is `vast/kick-build.sh` which
+# runs the same container on rented Vast.ai compute. Use this only if you have
+# the disk and want to iterate without paying.
+#
+# Usage:
+#   cd docker/
+#   docker compose up --build         # cold first run
+#   docker compose run --rm builder   # subsequent shells
+
+services:
+  builder:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BUILD_UID: ${UID:-1000}
+        BUILD_GID: ${GID:-1000}
+    image: customos/aosp-builder:android-16.0.0_r4
+    container_name: customos-builde
+    hostname: customos-builde
+    # AOSP needs lots of file descriptors and inotify watches.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # Don't run privileged in production; KVM is only needed at TEST time
+    # (launch_cvd), not at BUILD time. Keep this container unprivileged.
+    volumes:
+      - ../device-tree:/srv/devicetree:ro
+      - ../ca:/srv/cacerts:ro
+      - ../manifests:/srv/local_manifests:ro
+      - aosp_src:/srv/src
+      - aosp_ccache:/srv/ccache
+      - aosp_out:/srv/out
+      - aosp_keys:/srv/keys
+      - aosp_logs:/srv/logs
+    environment:
+      AOSP_BRANCH: android-16.0.0_r4
+      LUNCH_TARGET: customos_cf_x86_64_phone-userdebug
+      USE_CCACHE: "1"
+      CCACHE_MAX_SIZE: 100G
+      # Override at run time:
+      #   docker compose run -e PARALLEL_JOBS=24 --rm builde
+      PARALLEL_JOBS: ""
+    # Logs to stdout so 'docker compose logs -f builder' works as expected.
+    tty: true
+    stdin_open: true
+
+volumes:
+  aosp_src:
+  aosp_ccache:
+  aosp_out:
+  aosp_keys:
+  aosp_logs:

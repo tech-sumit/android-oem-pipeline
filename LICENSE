@@ -1,0 +1,21 @@
+Copyright (c) 2026 tech-sumit. All Rights Reserved.
+
+This repository contains proprietary tooling for building a custom Android
+Open Source Project (AOSP) flavor. Source code in this repository is NOT
+licensed for redistribution.
+
+The Android Open Source Project source code that this pipeline downloads
+and builds at runtime remains under its original licenses (Apache-2.0 and
+others). See https://source.android.com/license for details.
+
+Third-party patterns acknowledged:
+  - Volume layout and env-var-driven entrypoint patterns are inspired by
+    lineageos4microg/docker-lineage-cicd (Apache-2.0).
+  - Cuttlefish runtime tooling is provided by google/android-cuttlefish
+    (Apache-2.0).
+  - The Dockerfile draws on alexanderwolz/aosp-docker (Apache-2.0) and
+    cdlee/aosp-builder.
+
+No grant of rights is given to use, copy, modify, merge, publish, distribute,
+sublicense, or sell copies of this software outside of explicit written
+permission from the copyright holder.
