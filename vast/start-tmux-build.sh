@@ -112,7 +112,8 @@ log "remote: starting tmux session ${SESSION}"
 ssh_into_instance bash -s <<EOS
 set -Eeuo pipefail
 tmux kill-session -t "${SESSION}" >/dev/null 2>&1 || true
-tmux new-session -d -s "${SESSION}" -n build "bash /workspace/run-mayaos-build.sh"
+tmux new-session -d -s "${SESSION}" -n build "bash -lc 'bash /workspace/run-mayaos-build.sh; rc=\\\$?; echo; echo \"== MayaOS build process exited with code \\\$rc at \\\$(date -u +%Y-%m-%dT%H:%M:%SZ) ==\"; exec bash'"
+tmux set-option -t "${SESSION}" remain-on-exit on >/dev/null
 tmux new-window -t "${SESSION}" -n watch "watch -n 30 'date -u; echo === build log ===; tail -60 ${LOG_FILE} 2>/dev/null || true; echo; echo === active repo/build processes ===; ps -eo pid,ppid,stat,pcpu,pmem,etime,comm,args | grep -E \"repo|git|python3|soong|ninja|m -j|run-mayaos|init.sh|tee\" | grep -v grep || true; echo; echo === source size ===; du -sh /workspace/aosp-src /workspace/aosp-src/.repo 2>/dev/null || true; echo; echo === capacity ===; df -h /workspace; free -h'"
 tmux ls
 EOS
