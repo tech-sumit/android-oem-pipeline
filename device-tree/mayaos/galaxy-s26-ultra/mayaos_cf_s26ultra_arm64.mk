@@ -9,10 +9,10 @@
 # Output:  out/target/product/vsoc_arm64/
 #
 
-MAYAOS_DEVICE_PATH := device/mayaos/galaxy-s26-ultra
-$(call inherit-product, device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk)
-
 LOCAL_PATH := $(call my-dir)
+MAYAOS_DEVICE_PATH := $(LOCAL_PATH)
+
+$(call inherit-product, device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk)
 
 PRODUCT_NAME         := mayaos_cf_s26ultra_arm64
 PRODUCT_DEVICE       := vsoc_arm64

@@ -15,12 +15,12 @@
 # the pipeline's before-build hook both enforce parity. If you change a
 # branding string here, change it in mayaos.yaml too (or vice versa).
 
+LOCAL_PATH := $(call my-dir)
+MAYAOS_DEVICE_PATH := $(LOCAL_PATH)
+
 # Inherit AOSP Cuttlefish phone target (provides BoardConfig, partitions,
 # vendor, kernel, gfxstream-capable GPU stack for vsoc_x86_64).
-MAYAOS_DEVICE_PATH := device/mayaos/galaxy-s26-ultra
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/phone/aosp_cf.mk)
-
-LOCAL_PATH := $(call my-dir)
 
 # ---- Product identity (AOSP build system) ----------------------------------
 # These drive AOSP's PRODUCT_* variables. The PRODUCT_NAME stays in our
