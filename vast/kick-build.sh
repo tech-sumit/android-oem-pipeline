@@ -102,7 +102,7 @@ ssh_into_instance "cd ${REMOTE_DIR} && \
         -e SKIP_SYNC='${SKIP_SYNC}' \
         -e SKIP_BUILD='${SKIP_BUILD}' \
         -e PARALLEL_JOBS='${PARALLEL_JOBS:-}' \
-        -e OUT_DIR='/srv/src/out' \
+        -e OUT_DIR='out' \
         -v /workspace/aosp-src:/srv/src \
         -v /workspace/aosp-ccache:/srv/ccache \
         -v /workspace/aosp-src/out:/srv/src/out \

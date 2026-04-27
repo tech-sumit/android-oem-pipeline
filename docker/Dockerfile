@@ -88,7 +88,7 @@ RUN groupadd -g "${BUILD_GID}" build \
 # ---------------------------------------------------------------------------
 ENV SRC_DIR=/srv/src \
     CCACHE_DIR=/srv/ccache \
-    OUT_DIR=/srv/out \
+    OUT_DIR=out \
     KEYS_DIR=/srv/keys \
     LOGS_DIR=/srv/logs \
     LMANIFEST_DIR=/srv/local_manifests \
@@ -97,11 +97,14 @@ ENV SRC_DIR=/srv/src \
     CONFIG_DIR=/srv/config \
     CONFIG_FILE=/srv/config/mayaos.yaml
 
+# OUT_DIR is intentionally relative; AOSP 16's Soong rejects absolute paths
+# when test_package modules emit dependency JAR paths (validatePathInternal),
+# so the build root resolves it as $SRC_DIR/$OUT_DIR (i.e. /srv/src/out).
 RUN install -d -o build -g build \
-        "$SRC_DIR" "$CCACHE_DIR" "$OUT_DIR" "$KEYS_DIR" "$LOGS_DIR" \
+        "$SRC_DIR" "$CCACHE_DIR" "$SRC_DIR/$OUT_DIR" "$KEYS_DIR" "$LOGS_DIR" \
         "$LMANIFEST_DIR" "$DEVICETREE_DIR" "$CACERTS_DIR" "$CONFIG_DIR"
 
-VOLUME ["/srv/src", "/srv/ccache", "/srv/out", "/srv/keys", "/srv/logs", \
+VOLUME ["/srv/src", "/srv/ccache", "/srv/src/out", "/srv/keys", "/srv/logs", \
         "/srv/local_manifests", "/srv/devicetree", "/srv/cacerts", "/srv/config"]
 
 # ---------------------------------------------------------------------------

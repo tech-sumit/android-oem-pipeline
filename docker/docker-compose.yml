@@ -34,7 +34,7 @@ services:
       - ../mayaos.yaml:/srv/config/mayaos.yaml:ro
       - aosp_src:/srv/src
       - aosp_ccache:/srv/ccache
-      - aosp_out:/srv/out
+      - aosp_out:/srv/src/out
       - aosp_keys:/srv/keys
       - aosp_logs:/srv/logs
     environment:

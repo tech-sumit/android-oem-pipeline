@@ -105,7 +105,7 @@ ssh_into_instance "cd /workspace/aosp-src && \
         CCACHE_MAX_SIZE='${CCACHE_MAX_SIZE:-50G}' \
         SRC_DIR='/workspace/aosp-src' \
         CCACHE_DIR='/workspace/aosp-ccache' \
-        OUT_DIR='/workspace/aosp-src/out' \
+        OUT_DIR='out' \
         KEYS_DIR='/workspace/aosp-keys' \
         LOGS_DIR='/workspace/aosp-logs' \
         LMANIFEST_DIR='${REMOTE_DIR}/manifests' \

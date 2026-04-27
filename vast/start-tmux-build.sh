@@ -22,13 +22,16 @@ PROFILES_DEFAULT="galaxy-s26-ultra-intel-gpu,galaxy-s26-ultra-apple-silicon"
 PROFILES="${PROFILES:-$PROFILES_DEFAULT}"
 REPO_SYNC_JOBS="${REPO_SYNC_JOBS:-1}"
 SKIP_SYNC="${SKIP_SYNC:-0}"
-# AOSP convention: OUT_DIR lives inside the source root so absolute paths
-# Soong emits stay underneath SRC_DIR. test_package validation in 16.0.0_r4
-# rejects outputs whose absolute path is outside SRC_DIR (e.g. when OUT_DIR
-# is a sibling like /workspace/aosp-out), so anchor it explicitly under
-# /workspace/aosp-src/out.
+# AOSP convention: OUT_DIR is a *relative* path resolved against $PWD (which
+# is $SRC_DIR for `m`). Soong's android.validatePathInternal rejects any path
+# starting with "/" or "../"; if OUT_DIR is absolute, downstream
+# soong_zip / test_package modules emit absolute jar paths
+# (e.g. /workspace/aosp-src/out/host/.../foo.jar) that fail validation. Keep
+# the build-time value as `out`, but expose the absolute on-disk location for
+# mkdir/symlink/rsync calls outside the build.
 SRC_DIR_REMOTE="/workspace/aosp-src"
-OUT_DIR_REMOTE="${SRC_DIR_REMOTE}/out"
+OUT_DIR_RELATIVE="out"
+OUT_DIR_ABS="${SRC_DIR_REMOTE}/${OUT_DIR_RELATIVE}"
 
 log "syncing source before tmux build"
 "${VAST_DIR}/sync-source.sh"
@@ -39,16 +42,16 @@ set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq tmux rsync
-mkdir -p "${LOG_DIR}" ${SRC_DIR_REMOTE} /workspace/aosp-ccache ${OUT_DIR_REMOTE} \\
+mkdir -p "${LOG_DIR}" ${SRC_DIR_REMOTE} /workspace/aosp-ccache ${OUT_DIR_ABS} \\
          /workspace/aosp-keys /workspace/aosp-logs /opt/pipeline
 # Migrate any legacy sibling OUT_DIR into the in-tree location once.
 if [ -d /workspace/aosp-out ] && [ ! -L /workspace/aosp-out ]; then
-    rsync -aHAX --remove-source-files /workspace/aosp-out/ ${OUT_DIR_REMOTE}/ || true
+    rsync -aHAX --remove-source-files /workspace/aosp-out/ ${OUT_DIR_ABS}/ || true
     find /workspace/aosp-out -type d -empty -delete 2>/dev/null || true
     rmdir /workspace/aosp-out 2>/dev/null || true
 fi
 # Keep the legacy path resolvable for any external scripts (R2 watcher, etc).
-ln -sfn ${OUT_DIR_REMOTE} /workspace/aosp-out
+ln -sfn ${OUT_DIR_ABS} /workspace/aosp-out
 cat > /workspace/run-mayaos-build.sh <<'REMOTE'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -56,7 +59,7 @@ set -Eeuo pipefail
 REMOTE_DIR="${REMOTE_DIR}"
 LOG_DIR="${LOG_DIR}"
 LOG_FILE="${LOG_FILE}"
-mkdir -p "\$LOG_DIR" ${SRC_DIR_REMOTE} /workspace/aosp-ccache ${OUT_DIR_REMOTE} \\
+mkdir -p "\$LOG_DIR" ${SRC_DIR_REMOTE} /workspace/aosp-ccache ${OUT_DIR_ABS} \\
          /workspace/aosp-keys /workspace/aosp-logs /opt/pipeline
 
 {
@@ -110,7 +113,7 @@ env \\
     CCACHE_MAX_SIZE='${CCACHE_MAX_SIZE:-50G}' \\
     SRC_DIR='${SRC_DIR_REMOTE}' \\
     CCACHE_DIR='/workspace/aosp-ccache' \\
-    OUT_DIR='${OUT_DIR_REMOTE}' \\
+    OUT_DIR='${OUT_DIR_RELATIVE}' \\
     KEYS_DIR='/workspace/aosp-keys' \\
     LOGS_DIR='/workspace/aosp-logs' \\
     LMANIFEST_DIR="\${REMOTE_DIR}/manifests" \\
