@@ -31,7 +31,7 @@ jobs:
       - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: docker/Dockerfile
-          failure-threshold: erro
+          failure-threshold: error
           # DL3008 (pin apt versions): impractical for AOSP build deps that
           # must float with Ubuntu LTS minor updates. Pinning would force
           # constant bumps and diverge from the upstream AOSP build env guide.
@@ -40,6 +40,9 @@ jobs:
   gitleaks:
     name: secret scan
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,5 +63,94 @@ jobs:
             # GNU make in --warn-undefined-variables -p mode is the closest we get
             # to AOSP's makefile parser without sourcing build/envsetup.sh.
             make -nf "$mk" >/dev/null 2>&1 || echo "  (note: $mk needs AOSP context to fully parse; this is fine)"
-            grep -E '^PRODUCT_(NAME|DEVICE|BRAND|MANUFACTURER|MODEL|MAKEFILES)\s*[:?]?=' "$mk" || true
+            grep -E '^(PRODUCT_(NAME|DEVICE|BRAND|MANUFACTURER|MODEL|MAKEFILES)|BUILD_FINGERPRINT)\s*[:?]?=' "$mk" || true
           done
+
+  validate-config:
+    name: validate customos.yaml + device-tree parity
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL \
+              https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 \
+              -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: customos.yaml parses
+        run: |
+          yq eval '.' customos.yaml > /dev/null
+          echo "image: $(yq eval '.image.name' customos.yaml) v$(yq eval '.image.version' customos.yaml)"
+          echo "AOSP branch: $(yq eval '.aosp.branch' customos.yaml)"
+          echo "Profiles enabled:"
+          yq eval '.profiles[] | select(.enabled == true) | .id' customos.yaml | sed 's/^/  - /'
+
+      - name: Per-profile parity (yaml <-> .mk <-> AndroidProducts.mk)
+        run: |
+          set -Eeuo pipefail
+          fail=0
+          while IFS= read -r pid; do
+            [[ -n "$pid" ]] || continue
+            echo "=========================="
+            echo "==  parity: ${pid}"
+            echo "=========================="
+
+            mk_dir="device-tree/customos/${pid}"
+            mk_name=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .product_makefile" customos.yaml)
+            mk_path="${mk_dir}/${mk_name}"
+            ap_path="${mk_dir}/AndroidProducts.mk"
+            lunch_target=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .lunch_target" customos.yaml)
+
+            for f in "$mk_path" "$ap_path"; do
+              if [[ ! -f "$f" ]]; then
+                echo "::error::missing file: $f (profile ${pid})"
+                fail=1
+              fi
+            done
+            [[ "$fail" -eq 1 ]] && continue
+
+            # 1. lunch_target must appear verbatim in AndroidProducts.mk.
+            if ! grep -qE "(^|[[:space:]])${lunch_target}([[:space:]]|\\\\|$)" "$ap_path"; then
+              echo "::error::lunch_target '${lunch_target}' not found in ${ap_path}"
+              fail=1
+            else
+              echo "  ok  lunch_target '${lunch_target}' in AndroidProducts.mk"
+            fi
+
+            # 2. spoof.brand / manufacturer / model / build_fingerprint match the .mk.
+            for key in brand manufacturer model build_fingerprint; do
+              y=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.${key}" customos.yaml)
+              case "$key" in
+                brand)             grep_key='PRODUCT_BRAND' ;;
+                manufacturer)      grep_key='PRODUCT_MANUFACTURER' ;;
+                model)             grep_key='PRODUCT_MODEL' ;;
+                build_fingerprint) grep_key='BUILD_FINGERPRINT' ;;
+              esac
+              m=$(awk -v k="$grep_key" '$1 == k && $2 == ":=" {for(i=3;i<=NF;i++) printf "%s%s", $i, (i==NF?"":" ")}' "$mk_path")
+              if [[ "$y" != "$m" ]]; then
+                echo "::error::${pid}: ${key} mismatch"
+                echo "  yaml: '${y}'"
+                echo "  mk:   '${m}'"
+                fail=1
+              else
+                echo "  ok  ${key}='${y}'"
+              fi
+            done
+
+            # 3. spoof.* fields also appear in PRODUCT_PROPERTY_OVERRIDES as ro.product.*.
+            y_brand=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.brand" customos.yaml)
+            if ! grep -q "ro.product.brand=${y_brand}" "$mk_path"; then
+              echo "::error::${pid}: ro.product.brand=${y_brand} not present in ${mk_path}"
+              fail=1
+            fi
+          done < <(yq eval '.profiles[] | select(.enabled == true) | .id' customos.yaml)
+
+          if [[ "$fail" -ne 0 ]]; then
+            echo "::error::config<->makefile parity check failed; see errors above."
+            exit 1
+          fi
+          echo
+          echo "All enabled profiles passed parity."

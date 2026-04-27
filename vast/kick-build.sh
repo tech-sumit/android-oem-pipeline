@@ -70,6 +70,7 @@ ssh_into_instance "cd ${REMOTE_DIR} && \
     docker run --rm -t \
         -e AOSP_BRANCH='${AOSP_BRANCH}' \
         -e LUNCH_TARGET='${LUNCH_TARGET}' \
+        -e PROFILES='${PROFILES:-}' \
         -e SKIP_SYNC='${SKIP_SYNC}' \
         -e SKIP_BUILD='${SKIP_BUILD}' \
         -e PARALLEL_JOBS='${PARALLEL_JOBS:-}' \
@@ -81,6 +82,7 @@ ssh_into_instance "cd ${REMOTE_DIR} && \
         -v ${REMOTE_DIR}/device-tree:/srv/devicetree:ro \
         -v ${REMOTE_DIR}/ca:/srv/cacerts:ro \
         -v ${REMOTE_DIR}/manifests:/srv/local_manifests:ro \
+        -v ${REMOTE_DIR}/customos.yaml:/srv/config/customos.yaml:ro \
         ${IMAGE_TAG}"
 
 log "build complete. Pull artifacts with: ./vast/fetch-artifacts.sh"

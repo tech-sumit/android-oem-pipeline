@@ -2,45 +2,95 @@
 
 ## Goal
 
-Produce a custom OEM flavor of Android 16 (`android-16.0.0_r4`) targeting Cuttlefish (`vsoc_x86_64`) with:
+Produce AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** for use as the targets of a cloud-hosted Android device farm. v1 spoofs Samsung Galaxy S24 Ultra (SM-S928B); the schema in [`/customos.yaml`](../customos.yaml) accepts arbitrarily many profiles.
 
-1. **Custom branding** &mdash; `ro.product.brand = CustomOS`, `ro.oem.flavor = customos`, `ro.oem.build.tag` derived from the build date.
-2. **Custom root CA(s)** baked into `/system/etc/security/cacerts/` so MITM proxies and corporate PKI work without user-trust workarounds.
-3. **Reproducible builds** via a Docker container that pins all OS- and JDK-level dependencies.
-4. **Cloud build economics** &mdash; ~$2-3 per cold build on rented Vast.ai compute, no local 600 GB / 64 GB RAM workstation needed.
+Concrete properties of every produced image:
 
-## High-level data flow
+1. **Real-device spoof** &mdash; `ro.product.{brand,manufacturer,model,name,device}` and per-partition variants overridden to byte-match the target device. `BUILD_FINGERPRINT` pinned to the real Samsung fingerprint (analytics SDKs hash this exact string).
+2. **Hardware features XML** &mdash; the device "claims" cameras, fingerprint sensor, NFC, Vulkan compute, etc. as the real device does, so apps that gate on `PackageManager.hasSystemFeature(...)` see what they expect.
+3. **Display geometry** &mdash; density, resolution, refresh rate driven from `customos.yaml` so app rendering matches the real device.
+4. **Custom root CA(s)** baked into `/system/etc/security/cacerts/` so the device farm runtime's per-emulator MITM proxy can decrypt TLS for traffic analytics.
+5. **Reproducible builds** via a Docker container that pins all OS-, JDK-, and `yq`-level dependencies.
+6. **Cloud build economics** &mdash; ~$2-3 per cold build on rented Vast.ai compute; no local 600 GB / 64 GB RAM workstation needed.
+
+The runtime that consumes these images (orchestrator + per-pod MITM + adb-over-tcp) is described in [`device-farm.md`](device-farm.md) and is not built by this repo.
+
+## Build pipeline
 
 ```mermaid
 flowchart LR
-    subgraph Local[Local control plane - WSL2 / Linux]
+    subgraph Local[Control plane - GH Actions runner]
+        Cfg[customos.yaml]
         Repo[tech-sumit/android-oem-pipeline]
+        Cfg --> Repo
         Repo --> CA[ca/ - public PEMs]
-        Repo --> DT[device-tree/customos/customphone]
+        Repo --> DT[device-tree/customos/galaxy-s24-ultra]
         Repo --> DF[docker/Dockerfile]
         Repo --> Vast[vast/*.sh]
     end
     subgraph Cloud[Vast.ai instance - 32 vCPU / 64 GB / 1 TB NVMe]
-        Image[customos/aosp-builder<br/>Ubuntu 22.04 + AOSP deps]
+        Image[customos/aosp-builder<br/>Ubuntu 22.04 + AOSP deps + yq]
         Source[(/srv/src - AOSP source<br/>~250 GB)]
         Cache[(/srv/ccache - ~50 GB)]
-        Out[(/srv/out - artifacts)]
+        OutDir[(/srv/out - artifacts)]
     end
-    subgraph Test[Cuttlefish host - any Linux + KVM]
-        CVD[launch_cvd]
-        ADB[adb verify]
+    subgraph Distribute[Artifact distribution]
+        R2[(Cloudflare R2)]
+        GHRel[(GH Release - draft)]
     end
+    subgraph Farm[Device farm consumer - see device-farm.md]
+        Orch[k8s orchestrator]
+        Pods[hundreds of emulator pods]
+    end
+
     Vast -- vastai create --> Cloud
-    Vast -- rsync --> Image
+    Vast -- rsync repo + customos.yaml --> Image
     Image -- repo sync --> Source
-    Image -- splice --> Source
     DT -- after-sync hook --> Source
     CA -- after-sync hook --> Source
-    Image -- m -j --> Out
+    Image -- per-profile lunch + m -j --> OutDir
     Vast -- scp --> Local
-    Local -- launch_cvd --> Test
-    Test --> ADB
+    Local -- aws s3 cp --endpoint=R2 --> R2
+    Local -- gh release create --> GHRel
+    R2 --> Orch
+    GHRel --> Orch
+    Orch --> Pods
 ```
+
+## Device farm runtime (consumer of build artifacts)
+
+```mermaid
+flowchart LR
+    subgraph Source[Artifacts]
+        R2[(Cloudflare R2)]
+    end
+    subgraph Host[GPU host - A10 / L4]
+        OrchAgent[orchestrator agent]
+        subgraph Pod1[Emulator pod 1]
+            CVD1[launch_cvd]
+            Mitm1[mitmproxy]
+        end
+        subgraph PodN[Emulator pod N]
+            CVDN[launch_cvd]
+            MitmN[mitmproxy]
+        end
+    end
+    subgraph Test[External test runner]
+        CI[Espresso / UI Automator / Maestro / Appium]
+    end
+
+    R2 -- pull img.zip + cvd-host_package --> OrchAgent
+    OrchAgent --> Pod1
+    OrchAgent --> PodN
+    CI -- adb connect tcp:5555 --> CVD1
+    CVD1 -. trusts our root CA .-> Mitm1
+    Mitm1 --> Internet[(Internet)]
+    Mitm1 -- decrypted traffic --> Logs[(Traffic store)]
+```
+
+Detailed density planning, resource asks per emulator, and orchestrator selection are in [`device-farm.md`](device-farm.md).
+
+
 
 ## Why this layered design
 
@@ -73,7 +123,13 @@ This split means we can:
 - **Build** on any Vast.ai instance (CPU-only, no KVM access required, cheaper offers eligible).
 - **Test** on a separate Linux host with KVM, or an ephemeral Vast.ai instance with `--device /dev/kvm`.
 
-### 4. CA injection: v1 system cacerts, v2 Conscrypt APEX
+### 4. Single source of truth for branding (customos.yaml + parity check)
+
+`customos.yaml` is the contributor-facing config. The hand-written `.mk` files stay authoritative for AOSP-internal values (because rendering arbitrary AOSP build-system code from yaml is a rabbit hole). A CI parity check in `lint.yml` and a build-time parity check in `pipeline/hooks/before-build.sh` assert that every `profiles[*].spoof.{brand,manufacturer,model,build_fingerprint}` matches the corresponding `PRODUCT_*` and `BUILD_FINGERPRINT` lines in the matching `.mk`. If they drift, the build refuses to proceed.
+
+This trades two minor edits per profile change for zero codegen, zero dynamic templating, and a `.mk` file that Android engineers can read and review without learning a new tool. v2 may revisit if the parity surface grows past ~5 keys.
+
+### 5. CA injection: v1 system cacerts, v2 Conscrypt APEX
 
 Android 14+ moved the runtime trust store into the Conscrypt APEX module. Anchors in `/system/etc/security/cacerts/` are still copied into the system, but per [the Conscrypt APEX docs](conscrypt-apex.md), the runtime resolver consults the APEX-bundled `/apex/com.android.conscrypt/cacerts/` first.
 
@@ -81,7 +137,7 @@ For v1 (this repo as committed), we drop our CA into `/system/etc/security/cacer
 
 For v2 (planned, see `conscrypt-apex.md`), we'll rebuild the Conscrypt APEX with our anchors merged in, which makes our CA visible to apps that explicitly use the new APEX-resolved trust store. v2 requires also re-signing the APEX, which is more invasive.
 
-### 5. Cloud build over local
+### 6. Cloud build over local
 
 A cold AOSP 16 build wants:
 
@@ -97,60 +153,72 @@ Local Windows + WSL2 is at ~88 GB free; even a wipe-everything reset wouldn't un
 
 ```mermaid
 sequenceDiagram
-    participant Dev as Developer (laptop)
+    participant CI as GH Actions runner
     participant Vast as Vast.ai control plane
     participant Inst as Vast.ai instance
     participant Docker as customos/aosp-builder
     participant AOSP as android.googlesource.com
 
-    Dev->>Vast: vastai create instance (32vCPU/64G/1T)
-    Vast->>Inst: provision Ubuntu 22.04 + ssh
-    Inst-->>Dev: ready (ssh)
-    Dev->>Inst: rsync repo -> /workspace/android-oem-pipeline
-    Dev->>Inst: docker build -t customos/aosp-builder
-    Dev->>Inst: docker run customos/aosp-builder
+    CI->>CI: read customos.yaml (profiles, branch, vast sizing)
+    CI->>Vast: vastai create instance (32vCPU/64G/1T)
+    Vast->>Inst: provision Ubuntu 22.04 + ssh (CI pubkey attached)
+    Inst-->>CI: ready
+    CI->>Inst: rsync repo + customos.yaml -> /workspace/android-oem-pipeline
+    CI->>Inst: docker build -t customos/aosp-builder
+    CI->>Inst: docker run -v customos.yaml:/srv/config/customos.yaml ...
     Inst->>Docker: ENTRYPOINT init.sh
+    Docker->>Docker: read /srv/config/customos.yaml via yq
     Docker->>Docker: hook before-sync (no-op)
     Docker->>AOSP: repo init -b android-16.0.0_r4
     AOSP-->>Docker: manifest
     Docker->>AOSP: repo sync (parallel, ~2h)
     AOSP-->>Docker: ~250 GB source tree
-    Docker->>Docker: hook after-sync (splice device-tree + CAs)
-    Docker->>Docker: hook before-build (validate lunch combo)
-    Docker->>Docker: source envsetup.sh && lunch && m -j (~3-4h)
-    Docker->>Docker: hook after-build (zip img + cvd-host_package + SHA256SUMS)
-    Inst-->>Dev: stream logs
-    Dev->>Inst: rsync /srv/out/ -> ./out/<ts>/
-    Dev->>Vast: vastai destroy instance
+    Docker->>Docker: hook after-sync (splice every profile + stage CAs)
+    loop for each enabled profile
+        Docker->>Docker: hook before-build (yaml<->mk parity check)
+        Docker->>Docker: lunch <profile.lunch_target> && m -j (~3-4h cold)
+        Docker->>Docker: hook after-build (package out/<profile-id>/)
+    end
+    Inst-->>CI: stream logs
+    CI->>Inst: rsync /srv/out/ -> ./out/
+    CI->>CI: smoke-boot (swiftshader, getprop ro.product.brand)
+    CI->>CI: aws s3 cp --endpoint=R2 (if R2 secrets set)
+    CI->>CI: gh release create (draft, profile table, links)
+    CI->>Vast: vastai destroy instance (always, even on failure)
 ```
+
+
 
 ## Output artifacts
 
-After a successful build, `out/<timestamp>/` contains:
+After a successful build, `out/<profile-id>/` contains one set per enabled profile:
 
-| File | Purpose |
-|---|---|
-| `customos_cf_x86_64_phone-img-<ts>.zip` | Cuttlefish device images (super.img, boot.img, vbmeta.img, &hellip;) ready for `launch_cvd`. |
-| `cvd-host_package.tar.gz` | Cuttlefish host runtime (`launch_cvd`, `cvd_internal_*`, virglrenderer, etc.) matched to this build. |
-| `build-fingerprint.txt` | The exact `ro.build.fingerprint` of the produced image. |
-| `SHA256SUMS` | Manifest of the above. |
+| File                          | Purpose                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `<profile-id>-img-<ts>.zip`   | Cuttlefish device images (super.img, boot.img, vbmeta.img, &hellip;) ready for `launch_cvd`.  |
+| `cvd-host_package.tar.gz`     | Cuttlefish host runtime (`launch_cvd`, `cvd_internal_*`, etc.) matched to this build.         |
+| `build-fingerprint.txt`       | The exact `ro.build.fingerprint` of the produced image (= the spoofed fingerprint).           |
+| `profile.txt`                 | Profile id, lunch target, image-zip name, build timestamp.                                    |
+| `SHA256SUMS`                  | Manifest of the above.                                                                        |
 
-To boot:
+To boot a specific profile (Linux + KVM only):
 
 ```bash
-sudo apt install -y google-cuttlefish-base google-cuttlefish-user
+sudo apt install -y google-cuttlefish-base
 mkdir cf && cd cf
-tar xvf ../cvd-host_package.tar.gz
-unzip ../customos_cf_x86_64_phone-img-*.zip
+tar xvf ../out/galaxy-s24-ultra/cvd-host_package.tar.gz
+unzip ../out/galaxy-s24-ultra/galaxy-s24-ultra-img-*.zip
 HOME=$PWD ./bin/launch_cvd
+adb shell getprop ro.product.brand   # -> samsung
 ```
 
 ## Signing
 
-v0 uses AOSP test keys (`build/make/target/product/security/testkey.x509.pem`). This is fine for development &mdash; Cuttlefish doesn't enforce verified boot. For any non-development use, generate a real signing keypair set and pass them in via `/srv/keys` (already a defined volume in the Dockerfile). See [`docs/signing.md`](signing.md) when written.
+v0 uses AOSP test keys (`build/make/target/product/security/testkey.x509.pem`). This is fine for development &mdash; Cuttlefish doesn't enforce verified boot. For any non-development use, generate a real signing keypair set and pass them in via `/srv/keys` (already a defined volume in the Dockerfile). See `[docs/signing.md](signing.md)` when written.
 
 ## See also
 
-- [`docs/vast-runbook.md`](vast-runbook.md) &mdash; cost optimization, instance recipes, ccache preservation, troubleshooting.
-- [`docs/conscrypt-apex.md`](conscrypt-apex.md) &mdash; v2 plan: rebuild Conscrypt APEX so the runtime trust store contains our CA.
-- [`docs/adding-a-device.md`](adding-a-device.md) &mdash; how to add a second device target (e.g. real Pixel) atop this pipeline.
+- `[docs/vast-runbook.md](vast-runbook.md)` &mdash; cost optimization, instance recipes, ccache preservation, troubleshooting.
+- `[docs/conscrypt-apex.md](conscrypt-apex.md)` &mdash; v2 plan: rebuild Conscrypt APEX so the runtime trust store contains our CA.
+- `[docs/adding-a-device.md](adding-a-device.md)` &mdash; how to add a second device target (e.g. real Pixel) atop this pipeline.
+

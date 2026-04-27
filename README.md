@@ -1,150 +1,214 @@
 # android-oem-pipeline
 
-> **CustomOS** &mdash; an OEM flavor of Android 16 (AOSP `android-16.0.0_r4`) targeting Cuttlefish (`vsoc_x86_64`), with custom root CA certificates baked into the system image and an end-to-end build pipeline that runs on rented Vast.ai compute.
+> **CustomOS Device Farm** &mdash; a build pipeline that produces AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** (Samsung Galaxy S24 Ultra in v1, more profiles to follow) for use as the targets of a cloud-hosted, GPU-accelerated Android device farm.
 
-This repository is the **build pipeline** &mdash; not the AOSP source itself. AOSP source (~250 GB) is fetched fresh on each build instance via `repo sync`. Our delta is small: a device tree under `device/customos/customphone/`, a few CA certs, and the orchestration scripts that drive the build.
+This repository builds the **images**. The runtime that schedules hundreds of these emulators per GPU host and exposes adb-over-tcp to external test runners is described in [`docs/device-farm.md`](docs/device-farm.md) and is intentionally not implemented in v1; the build pipeline is independently useful.
+
+| | |
+|---|---|
+| **AOSP base** | `android-16.0.0_r4` |
+| **Target** | Cuttlefish (`vsoc_x86_64`), `gfxstream` GPU mode |
+| **v1 profile** | `galaxy-s24-ultra` (Samsung SM-S928B; fingerprint `samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys`) |
+| **Build host** | Vast.ai rented instance, ~32 vCPU / 64 GB / 1 TB NVMe |
+| **Cold-build cost** | ~$2.50 / ~5-7 h |
+| **CA injection** | v1: `/system/etc/security/cacerts/` baked at build time. v2: Conscrypt APEX rebuild (planned) |
 
 ---
 
 ## Why this exists
 
-Standard Android emulators and stock OS images don't accept arbitrary corporate / lab root CAs as system-trusted. Apps that pin to the system trust store (most banking, MDM, and DRM-aware apps) reject MITM proxies even when the CA is added to the user trust store.
+Apps under test routinely behave differently based on what device they think they're running on. Banking apps refuse rooted devices and known emulator fingerprints; analytics SDKs hash `BUILD_FINGERPRINT` to bucket users; ad SDKs gate on `hasSystemFeature(...)`; SafetyNet replacements check the per-partition `ro.product.*` properties for consistency. Stock Android emulators leak "this is an emulator" in dozens of places, and patching `getprop` at runtime is fragile and detectable.
 
-The fix is to ship a **custom system image** where the CA lives in `/system/etc/security/cacerts/` (and, for Android 14+, in the Conscrypt APEX runtime trust store) so it's indistinguishable from a CA that shipped with the device. This pipeline produces that image, reproducibly, in the cloud.
+The fix is to ship **a Cuttlefish image where every consumer-visible identity property is set at AOSP build time** to match a real device. Apps see the same byte sequences they'd see on actual hardware.
 
-## What's in the box
+We additionally bake a custom root CA into `/system/etc/security/cacerts/` so the device farm runtime can stand up a per-emulator MITM proxy and decrypt TLS for traffic analytics &mdash; without that, app traffic is opaque.
 
-| Layer | Purpose | Reuses |
-|---|---|---|
-| `docker/Dockerfile` | Reproducible AOSP 16 build environment (Ubuntu 22.04 + JDK 21 + ccache + `repo`) | Patterns from [`alexanderwolz/aosp-docker`](https://github.com/alexanderwolz/aosp-docker) and [`cdlee/aosp-builder`](https://hub.docker.com/r/cdlee/aosp-builder) |
-| `pipeline/init.sh` + `pipeline/hooks/` | Env-var-driven build orchestration with hookable phases (`before-sync`, `after-sync`, `before-build`, `after-build`) | Hook contract modeled on [`lineageos4microg/docker-lineage-cicd`](https://github.com/lineageos4microg/docker-lineage-cicd) |
-| `device-tree/customos/customphone/` | Custom OEM device tree (lunch combo `customos_cf_x86_64_phone-userdebug`) | Inherits `device/google/cuttlefish/vsoc_x86_64/aosp_cf.mk` |
-| `manifests/customos.xml` | `repo` local manifest fragment so AOSP source picks up our device tree | Standard `repo` mechanism |
-| `ca/` | Root CA staging area (public PEMs only; private keys are gitignored) | &mdash; |
-| `vast/` | Vast.ai instance lifecycle (search &rarr; provision &rarr; sync &rarr; build &rarr; fetch &rarr; destroy) | [`vastai`](https://pypi.org/project/vastai/) CLI |
-| `scripts/` | Helper utilities: generate demo CA, add a CA, verify a built image, version bump | &mdash; |
-| `docs/` | Architecture, runbook, Conscrypt APEX deep-dive | &mdash; |
+## Multi-profile architecture, single source of truth
 
-See [`docs/architecture.md`](docs/architecture.md) for the full architecture and rationale.
+Everything that makes a build a build &mdash; AOSP branch, lunch target, branding spoof, hardware features, R2 bucket, Vast.ai sizing &mdash; lives in [`/customos.yaml`](customos.yaml). The hand-written device-tree `.mk` files stay authoritative for AOSP-internal values, but a CI parity check fails the build if `.mk` and yaml drift.
 
-## Quickstart
+```yaml
+# excerpt -- see customos.yaml for the full schema
+profiles:
+  - id: galaxy-s24-ultra
+    enabled: true
+    lunch_target: customos_cf_s24ultra-userdebug
+    spoof:
+      brand: samsung
+      manufacturer: samsung
+      model: SM-S928B
+      build_fingerprint: "samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys"
+    display:
+      width_px: 1440
+      height_px: 3120
+      density_dpi: 505
+      refresh_rate_hz: 120
+    hardware:
+      ram_mb: 12288
+      cpu_cores: 8
+      features: [...] # written verbatim into a permissions XML
+```
 
-### 0. One-time prerequisites (local control plane)
+Adding a new device is: add a profile, write its `.mk`, set `enabled: true`, merge the PR. The pipeline picks it up automatically.
+
+## CI-driven workflow (primary path)
+
+This is the workflow you actually want.
+
+```mermaid
+flowchart LR
+    PR[PR merged to main] --> Trig[GH Actions release.yml]
+    Trig --> Vast[Provision Vast.ai]
+    Vast --> Build[Build per profile]
+    Build --> Smoke[Smoke boot 30s swiftshader]
+    Build --> R2[Upload to R2]
+    Build --> GHR[Cut GH Release draft]
+    Trig -.always.-> Cleanup[Destroy Vast.ai]
+```
+
+When a PR is merged into `main`:
+
+1. `release.yml` reads `customos.yaml` for branch / lunch / profiles / Vast sizing / R2 settings.
+2. Provisions a Vast.ai instance matching `vast.cpu_min` / `ram_min_gb` / `disk_min_gb` / `dph_max_usd`.
+3. `rsync`s the repo (including `customos.yaml`) to the instance, builds the Docker image there, runs `init.sh`.
+4. `init.sh` iterates every `enabled: true` profile: `lunch ${lunch_target} && m -j` per profile, packaging into `out/<profile-id>/`.
+5. Smoke-boot CI job downloads the artifact, boots one image under `swiftshader_indirect` for 30 s, asserts `ro.product.brand == samsung`. `continue-on-error: true` for v1 (the GH-hosted runner may lack nested KVM).
+6. R2 upload (if `R2_*` secrets set) -> `<bucket>/<prefix><version>-<gitsha>/<profile-id>/<files>`.
+7. Cut a **draft** GH Release with a per-profile table of fingerprints, R2 links (or attached binaries as a fallback), and SHA256SUMS.
+8. Always destroy the Vast.ai instance, even on cancel/failure.
+
+Path filters skip `docs/`, `*.md`, and `lint.yml` changes &mdash; documentation typos do not burn $2.50 of compute.
+
+### Required secrets (already set)
+
+| Secret | Source |
+|---|---|
+| `VAST_API_KEY`         | from `~/.config/vastai/vast_api_key` |
+| `VAST_SSH_PRIVATE_KEY` | ed25519 keypair generated specifically for CI |
+| `VAST_SSH_PUBLIC_KEY`  | matching pubkey, attached to provisioned instances |
+
+### Optional secrets (for R2 upload)
+
+The first build will run with R2 upload **skipped**, falling back to attaching binaries directly to the GH Release. To enable R2:
 
 ```bash
-# Vast.ai CLI (used to drive the cloud build)
-pipx install vastai
+REPO=tech-sumit/android-oem-pipeline
 
-# gh CLI (only if you'll cut releases / manage PRs)
+gh secret set R2_ACCOUNT_ID        --repo "$REPO" --body "<your-cf-account-id>"
+gh secret set R2_ACCESS_KEY_ID     --repo "$REPO" --body "<r2-token-access-key>"
+gh secret set R2_SECRET_ACCESS_KEY --repo "$REPO" --body "<r2-token-secret>"
+gh secret set R2_BUCKET            --repo "$REPO" --body "customos-aosp-builds"
+```
+
+Get the credentials from the Cloudflare dashboard:
+1. R2 -> Manage R2 API Tokens -> "Create API Token", scope = "Object Read & Write" on a single bucket.
+2. The token form gives you `Access Key ID` and `Secret Access Key`. Note them, you can't view the secret again.
+3. `R2_ACCOUNT_ID` is on the right sidebar of the Cloudflare R2 page.
+
+Once those four secrets are set, the next build will upload artifacts to R2 and the GH Release body will link directly to them.
+
+## Local manual workflow (advanced / debugging)
+
+You generally don't need this; CI does the work. It exists for two cases: debugging a build that's failing in CI without burning a fresh Vast instance per attempt, and developing a new profile before opening the PR.
+
+```bash
+# 0. one-time prerequisites
+pipx install vastai
 gh auth login
 
-# Linux/WSL2 shell. Windows PowerShell is NOT supported as the control plane;
-# use WSL2 (Ubuntu 22.04 recommended).
+# 1. provision
+./vast/search.sh                       # show top 5 candidate offers
+./vast/provision.sh <offer_id>         # rent it; saves id to vast/.instance_id
+
+# 2. sync + build (mounts customos.yaml at /srv/config/ in the container)
+./vast/sync-source.sh
+PROFILES=galaxy-s24-ultra ./vast/kick-build.sh
+
+# 3. fetch artifacts
+./vast/fetch-artifacts.sh              # rsync /srv/out/ -> ./out/<ts>/
+
+# 4. always destroy (or pay for an idle instance)
+./vast/destroy.sh
 ```
 
-Set up secrets:
+`PROFILES` is comma-separated; omit it to build every `enabled: true` profile in `customos.yaml`.
+
+### Booting a built image locally
 
 ```bash
-# Vast.ai API key
-echo "<YOUR_VAST_KEY>" > vast_api_key
-chmod 600 vast_api_key
-
-# (Optional) Replace the demo CA with your real root CA(s)
-./scripts/add-ca.sh /path/to/your-root.pem
-```
-
-### 1. Provision a Vast.ai build host
-
-```bash
-./vast/search.sh                  # show top 5 candidate offers (~32 vCPU / 64 GB / 1 TB)
-./vast/provision.sh <offer_id>    # rent the chosen instance, save id to vast/.instance_id
-./vast/ssh.sh                     # interactive ssh (sanity check)
-```
-
-### 2. Push the pipeline + kick the build
-
-```bash
-./vast/sync-source.sh             # rsync this repo + ca/ + device-tree/ to the instance
-./vast/kick-build.sh              # docker run on remote, streams logs back to your terminal
-                                  # ~250 GB repo sync (~2h) + ~3-4h build = ~5-7h end-to-end
-```
-
-### 3. Pull artifacts and destroy the instance
-
-```bash
-./vast/fetch-artifacts.sh         # scp out/target/product/vsoc_x86_64/*.img + cvd-host_package.tar.gz
-./vast/destroy.sh                 # stop billing
-```
-
-### 4. Boot the image locally with Cuttlefish
-
-```bash
-# Requires Linux with KVM. Cuttlefish does NOT run on Windows or macOS hosts.
-sudo apt install -y google-cuttlefish-base google-cuttlefish-use
+# Linux only; Cuttlefish needs KVM (won't run on Windows / macOS hosts).
+sudo apt install -y google-cuttlefish-base
 mkdir cf && cd cf
-tar xvf ../cvd-host_package.tar.gz
-unzip ../customos_cf_x86_64_phone-img-*.zip
+tar xf ../out/galaxy-s24-ultra/cvd-host_package.tar.gz
+unzip ../out/galaxy-s24-ultra/galaxy-s24-ultra-img-*.zip
 HOME=$PWD ./bin/launch_cvd
-
-# In another terminal, verify our CA is present:
+# In another terminal:
+adb shell getprop ro.product.brand   # -> samsung
+adb shell getprop ro.build.fingerprint
 ./scripts/verify-image.sh
 ```
-
-## What's already done vs what's pending
-
-- [x] Device tree skeleton and product makefile
-- [x] Demo CA generated and placed at `device-tree/customos/customphone/security/cacerts/0899db77.0`
-- [x] Dockerfile + entrypoint + hook contract
-- [x] Vast.ai lifecycle scripts (skeletons; tested end-to-end on first build)
-- [x] Documentation and runbook
-- [ ] First successful AOSP 16 build on Vast.ai (next milestone)
-- [ ] Conscrypt APEX rebuild path for Android 14+ runtime trust (see [`docs/conscrypt-apex.md`](docs/conscrypt-apex.md))
-- [ ] CI smoke test (boot the built image, `adb` assertions on `ro.product.brand` + `openssl s_client` against a CA-signed endpoint)
-
-## Cost guardrails
-
-The default `vast/search.sh` filter targets ~$0.30&ndash;0.60 / hr instances. A full clean build (sync + lunch + `m`) is roughly:
-
-| Phase | Wall time | $0.40/hr cost |
-|---|---|---|
-| `repo sync` (cold) | ~2 h | ~$0.80 |
-| First `m` (cold ccache) | ~3-4 h | ~$1.20-1.60 |
-| Repackage / fetch | ~30 min | ~$0.20 |
-| **Total cold build** | **~6 h** | **~$2.20-2.60** |
-| Subsequent incremental builds (warm ccache) | ~30-60 min | ~$0.20-0.40 |
-
-`ccache` and the AOSP source live on the instance's NVMe; if you destroy the instance, the next build is cold again. To preserve them across runs, snapshot to S3 / Backblaze (see [`docs/vast-runbook.md`](docs/vast-runbook.md#preserving-ccache-and-source-across-runs)).
-
-## Security model
-
-- **Private keys** (CA private keys, signing keys, Vast API key) are **never committed**. `.gitignore` enforces this; `LICENSE` calls it out.
-- **Demo CA** (`ca/customos-root-ca.pem`) is committed for first-run convenience &mdash; it is **public** and self-signed, has no power. The matching `customos-root-ca.key` is **not** committed and was discarded after the demo cert was generated. To use a real CA, run `scripts/add-ca.sh /path/to/real.pem` &mdash; the public PEM gets staged into the device tree, the private key never enters the repo.
-- **Build signing** uses the AOSP-default test keys for now. Production builds should use a dedicated signing key set; see [`docs/architecture.md#signing`](docs/architecture.md#signing).
-- **CA injection** strategy is v1 (system cacerts) by default; v2 (rebuild Conscrypt APEX) is documented in [`docs/conscrypt-apex.md`](docs/conscrypt-apex.md) for Android 14+ hardening.
 
 ## Layout
 
 ```text
 .
-├── docker/          AOSP build containe
-├── device-tree/     Our OEM customizations
-├── manifests/       repo local_manifests fragment
-├── ca/              Public PEMs only (private keys gitignored)
-├── pipeline/        Container entrypoint + hooks
-├── vast/            Vast.ai lifecycle scripts
-├── scripts/         Helpers (gen-ca, add-ca, verify-image, bump-version)
-├── .github/         Lint workflow + release workflow (tag-driven build)
-└── docs/            Architecture, runbook, Conscrypt APEX
+├── customos.yaml          single source of truth (multi-profile schema)
+├── docker/                AOSP build container (Ubuntu 22.04 + JDK 21 + ccache + repo + yq)
+├── device-tree/customos/
+│   └── galaxy-s24-ultra/  v1 profile - Samsung SM-S928B spoof + features XML
+├── manifests/             repo local_manifests fragment (placeholder)
+├── ca/                    public root CA PEMs (private keys are gitignored)
+├── pipeline/              container entrypoint + per-phase hooks
+│   └── hooks/             before-sync, after-sync, before-build (parity check), after-build
+├── vast/                  Vast.ai lifecycle scripts
+├── scripts/               gen-demo-ca, add-ca, verify-image
+├── .github/workflows/     lint.yml (incl. validate-config) + release.yml (CI-driven)
+└── docs/
+    ├── architecture.md    pipeline architecture
+    ├── device-farm.md     consumer-side runtime architecture
+    ├── vast-runbook.md    cost optimization, troubleshooting
+    └── conscrypt-apex.md  v2 plan: rebuild APEX with our CAs
 ```
+
+## Cost guardrails
+
+`customos.yaml`'s `vast.dph_max_usd` is a hard cap on the per-hour rate `./vast/search.sh` will accept. The default is `$0.80/hr`; a full build is roughly:
+
+| Phase | Wall time | Cost @ $0.40/hr |
+|---|---|---|
+| `repo sync` (cold) | ~2 h | ~$0.80 |
+| First profile `m` (cold ccache) | ~3-4 h | ~$1.20-1.60 |
+| Repackage + fetch | ~30 min | ~$0.20 |
+| **Cold build (1 profile)** | **~6 h** | **~$2.20-2.60** |
+| Each additional profile in same run | ~30-60 min (warm ccache) | ~$0.20-0.40 |
+| Subsequent incremental builds (warm ccache, same instance) | ~30 min | ~$0.20 |
+
+`ccache` and the AOSP source live on the instance's NVMe; if you destroy the instance, the next build is cold again. To preserve them across runs, snapshot to S3/R2 (see [`docs/vast-runbook.md`](docs/vast-runbook.md#preserving-ccache-and-source-across-runs)).
+
+## Security model
+
+- **Private keys** (CA private keys, AOSP signing keys, Vast API key) are **never** committed. `.gitignore` and `gitleaks` enforce this.
+- **Demo CA** (`ca/customos-root-ca.pem`) is committed for first-run convenience; it is public and self-signed and has no power. To use a real CA, run `./scripts/add-ca.sh /path/to/real.pem` &mdash; the public PEM gets staged into the device tree, the private key stays on your laptop.
+- **Build signing** uses AOSP test keys for v0. Production should use a dedicated key set; see `docs/architecture.md#signing`.
+- **CA reach** in v1 is `/system/etc/security/cacerts/`; for Android 14+ apps that explicitly use the new Conscrypt APEX trust store, see [`docs/conscrypt-apex.md`](docs/conscrypt-apex.md) for the v2 plan.
+
+## Roadmap
+
+- [x] v1 build pipeline + Galaxy S24 Ultra profile
+- [x] CI-driven workflow with R2 + GH Release
+- [x] Spoof parity lint
+- [ ] First successful AOSP 16 build on Vast.ai (will fire when this PR's predecessor lands and we kick a build)
+- [ ] R2 secrets + first R2-hosted release
+- [ ] Conscrypt APEX rebuild
+- [ ] Pixel 8 Pro profile (scaffolded; `enabled: false` in v1)
+- [ ] k8s device-farm runtime ([`docs/device-farm.md`](docs/device-farm.md), separate repo)
 
 ## Acknowledgments
 
-This pipeline is a fresh implementation but openly borrows mechanics from the open-source community. Specifically:
-
-- [`lineageos4microg/docker-lineage-cicd`](https://github.com/lineageos4microg/docker-lineage-cicd) &mdash; the env-var + volume + hook contract is modeled on theirs, simplified for pure AOSP and a single device target.
-- [`alexanderwolz/aosp-docker`](https://github.com/alexanderwolz/aosp-docker) &mdash; clean reference for AOSP 14+ build dependency lists.
-- [`google/android-cuttlefish`](https://github.com/google/android-cuttlefish) &mdash; the runtime we use to boot the built image and verify it.
-- [`LineageOS-UL/android_device_google_cuttlefish`](https://github.com/LineageOS-UL/android_device_google_cuttlefish) &mdash; reference for layering custom branding on top of `device/google/cuttlefish`.
+- [`google/android-cuttlefish`](https://github.com/google/android-cuttlefish) &mdash; the runtime we boot the produced images on.
+- [`lineageos4microg/docker-lineage-cicd`](https://github.com/lineageos4microg/docker-lineage-cicd) &mdash; env-var + volume + hook contract pattern.
+- [`alexanderwolz/aosp-docker`](https://github.com/alexanderwolz/aosp-docker) &mdash; clean reference for AOSP 14+ apt deps.
+- [`mikefarah/yq`](https://github.com/mikefarah/yq) &mdash; YAML parsing in shell.
 
 ## License
 

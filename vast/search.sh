@@ -16,19 +16,24 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 ensure_vastai_auth
 
-CPU_MIN="${CPU_MIN:-32}"
+CPU_MIN="${CPU_MIN:-24}"
 RAM_MIN="${RAM_MIN:-64}"
 DISK_MIN="${DISK_MIN:-1024}"
 NET_MIN="${NET_MIN:-100}"
 TOP_N="${TOP_N:-5}"
 DPH_MAX="${DPH_MAX:-0.80}"
 
-log "searching Vast.ai (>=${CPU_MIN} vCPU, >=${RAM_MIN}G RAM, >=${DISK_MIN}G disk, <=\$${DPH_MAX}/hr, top ${TOP_N})"
+log "searching Vast.ai (>=${CPU_MIN} effective vCPU, >=${RAM_MIN}G RAM, >=${DISK_MIN}G disk, <=\$${DPH_MAX}/hr, top ${TOP_N})"
 
-# vastai search query language: AND-of-clauses, sorted by lowest dph.
-# `rentable=true` filters out machines currently allocated to someone else.
+# vastai's `cpu_cores` is the HOST's physical cores; `cpu_cores_effective` is
+# the slice actually allocated to your container. Always filter on effective
+# (a host with 80 cores might allocate you only 10).
+#
+# rentable=true       skips machines currently allocated to someone else
+# verified=true       skips unverified hosts (no SLA, prone to disconnects)
+# cuda_max_good>=0    no GPU requirement (we only need CPU)
 QUERY="rentable=true verified=true \
-       cpu_cores>=${CPU_MIN} \
+       cpu_cores_effective>=${CPU_MIN} \
        cpu_ram>=${RAM_MIN} \
        disk_space>=${DISK_MIN} \
        inet_down>=${NET_MIN} \
