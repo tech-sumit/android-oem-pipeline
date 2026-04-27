@@ -14,7 +14,7 @@ set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CA_DIR="${REPO_ROOT}/ca"
-DEVICE_CACERTS="${REPO_ROOT}/device-tree/customos/customphone/security/cacerts"
+DEVICE_CACERTS="${REPO_ROOT}/device-tree/mayaos/galaxy-s26-ultra/security/cacerts"
 
 src="${1:-}"
 [[ -n "$src" && -f "$src" ]] || { echo "usage: $0 <path-to-pem>" >&2; exit 2; }

@@ -9,7 +9,7 @@
 #
 # Override behavior with env vars:
 #   AOSP_BRANCH=android-16.0.0_r4
-#   LUNCH_TARGET=customos_cf_x86_64_phone-userdebug
+#   LUNCH_TARGET=mayaos_cf_s26ultra-trunk_staging-userdebug
 #   PARALLEL_JOBS=  (default: nproc on the instance)
 #   SKIP_SYNC=0
 #   SKIP_BUILD=0
@@ -21,10 +21,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 ensure_vastai_auth
 
 REMOTE_DIR="${REMOTE_DIR:-/workspace/android-oem-pipeline}"
-IMAGE_TAG="${IMAGE_TAG:-customos/aosp-builder:android-16.0.0_r4}"
+IMAGE_TAG="${IMAGE_TAG:-mayaos/aosp-builder:android-16.0.0_r4}"
 
 AOSP_BRANCH="${AOSP_BRANCH:-android-16.0.0_r4}"
-LUNCH_TARGET="${LUNCH_TARGET:-customos_cf_x86_64_phone-userdebug}"
+LUNCH_TARGET="${LUNCH_TARGET:-mayaos_cf_s26ultra-trunk_staging-userdebug}"
 SKIP_SYNC="${SKIP_SYNC:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
@@ -44,11 +44,32 @@ https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin
 fi
+if ! docker info >/dev/null 2>&1; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl start docker >/dev/null 2>&1 || true
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        nohup dockerd \
+            --iptables=false \
+            --ip-masq=false \
+            --ip-forward=false \
+            --bridge=none \
+            >/tmp/mayaos-dockerd.log 2>&1 &
+    fi
+    for i in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then
+            break
+        fi
+        sleep 2
+        [[ "$i" -ne 30 ]] || { echo "docker daemon did not start; see /tmp/mayaos-dockerd.log" >&2; exit 1; }
+    done
+fi
 docker --version
 EOS
 
 log "remote: building image ${IMAGE_TAG}"
 ssh_into_instance "cd ${REMOTE_DIR} && docker build \
+    --network host \
     --build-arg BUILD_UID=\$(id -u) --build-arg BUILD_GID=\$(id -g) \
     -f docker/Dockerfile -t ${IMAGE_TAG} ."
 
@@ -68,6 +89,7 @@ log "  skip_sync=${SKIP_SYNC} skip_build=${SKIP_BUILD}"
 # survives the streaming pipeline. Unbuffered, so logs are real-time.
 ssh_into_instance "cd ${REMOTE_DIR} && \
     docker run --rm -t \
+        --network host \
         -e AOSP_BRANCH='${AOSP_BRANCH}' \
         -e LUNCH_TARGET='${LUNCH_TARGET}' \
         -e PROFILES='${PROFILES:-}' \
@@ -82,7 +104,7 @@ ssh_into_instance "cd ${REMOTE_DIR} && \
         -v ${REMOTE_DIR}/device-tree:/srv/devicetree:ro \
         -v ${REMOTE_DIR}/ca:/srv/cacerts:ro \
         -v ${REMOTE_DIR}/manifests:/srv/local_manifests:ro \
-        -v ${REMOTE_DIR}/customos.yaml:/srv/config/customos.yaml:ro \
+        -v ${REMOTE_DIR}/mayaos.yaml:/srv/config/mayaos.yaml:ro \
         ${IMAGE_TAG}"
 
 log "build complete. Pull artifacts with: ./vast/fetch-artifacts.sh"

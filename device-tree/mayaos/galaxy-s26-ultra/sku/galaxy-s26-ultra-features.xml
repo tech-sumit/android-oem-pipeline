@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    CustomOS device-farm feature manifest for the Samsung Galaxy S24 Ultra
+    MayaOS device-farm feature manifest for the Samsung Galaxy S26 Ultra
     spoof profile. PackageManager.hasSystemFeature(name) returns true iff a
     <feature name="..."/> entry is present here OR in another permissions
     file shipped under /system/etc/permissions/ or /vendor/etc/permissions/.
 
     This file is the single source of "what hardware does the device claim to
-    have". Apps that gate behavior on hasSystemFeature -- camera, NFC,
-    fingerprint, telephony, sensors -- pivot off these entries.
+    have". Apps that gate behavior on hasSystemFeature, including camera, NFC,
+    fingerprint, telephony, and sensors, pivot off these entries.
 
-    The list mirrors customos.yaml profiles[id=galaxy-s24-ultra].hardware.features.
+    The list mirrors mayaos.yaml profiles[id=galaxy-s26-ultra].hardware.features.
     Keep them in sync; the lint workflow's validate-config job checks parity.
 -->
 <permissions>

@@ -1,6 +1,6 @@
 # android-oem-pipeline
 
-> **CustomOS Device Farm** &mdash; a build pipeline that produces AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** (Samsung Galaxy S24 Ultra in v1, more profiles to follow) for use as the targets of a cloud-hosted, GPU-accelerated Android device farm.
+> **MayaOS Device Farm** &mdash; a build pipeline that produces AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** (Samsung Galaxy S26 Ultra in v1, more profiles to follow) for use as the targets of a cloud-hosted, GPU-accelerated Android device farm.
 
 This repository builds the **images**. The runtime that schedules hundreds of these emulators per GPU host and exposes adb-over-tcp to external test runners is described in [`docs/device-farm.md`](docs/device-farm.md) and is intentionally not implemented in v1; the build pipeline is independently useful.
 
@@ -8,7 +8,7 @@ This repository builds the **images**. The runtime that schedules hundreds of th
 |---|---|
 | **AOSP base** | `android-16.0.0_r4` |
 | **Target** | Cuttlefish (`vsoc_x86_64`), `gfxstream` GPU mode |
-| **v1 profile** | `galaxy-s24-ultra` (Samsung SM-S928B; fingerprint `samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys`) |
+| **v1 profile** | `galaxy-s26-ultra` (Samsung SM-S948B; fingerprint `samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys`) |
 | **Build host** | Vast.ai rented instance, ~32 vCPU / 64 GB / 1 TB NVMe |
 | **Cold-build cost** | ~$2.50 / ~5-7 h |
 | **CA injection** | v1: `/system/etc/security/cacerts/` baked at build time. v2: Conscrypt APEX rebuild (planned) |
@@ -25,19 +25,19 @@ We additionally bake a custom root CA into `/system/etc/security/cacerts/` so th
 
 ## Multi-profile architecture, single source of truth
 
-Everything that makes a build a build &mdash; AOSP branch, lunch target, branding spoof, hardware features, R2 bucket, Vast.ai sizing &mdash; lives in [`/customos.yaml`](customos.yaml). The hand-written device-tree `.mk` files stay authoritative for AOSP-internal values, but a CI parity check fails the build if `.mk` and yaml drift.
+Everything that makes a build a build &mdash; AOSP branch, lunch target, branding spoof, hardware features, R2 bucket, Vast.ai sizing &mdash; lives in [`/mayaos.yaml`](mayaos.yaml). The hand-written device-tree `.mk` files stay authoritative for AOSP-internal values, but a CI parity check fails the build if `.mk` and yaml drift.
 
 ```yaml
-# excerpt -- see customos.yaml for the full schema
+# excerpt -- see mayaos.yaml for the full schema
 profiles:
-  - id: galaxy-s24-ultra
+  - id: galaxy-s26-ultra
     enabled: true
-    lunch_target: customos_cf_s24ultra-userdebug
+    lunch_target: mayaos_cf_s26ultra-trunk_staging-userdebug
     spoof:
       brand: samsung
       manufacturer: samsung
-      model: SM-S928B
-      build_fingerprint: "samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys"
+      model: SM-S948B
+      build_fingerprint: "samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys"
     display:
       width_px: 1440
       height_px: 3120
@@ -68,9 +68,9 @@ flowchart LR
 
 When a PR is merged into `main`:
 
-1. `release.yml` reads `customos.yaml` for branch / lunch / profiles / Vast sizing / R2 settings.
+1. `release.yml` reads `mayaos.yaml` for branch / lunch / profiles / Vast sizing / R2 settings.
 2. Provisions a Vast.ai instance matching `vast.cpu_min` / `ram_min_gb` / `disk_min_gb` / `dph_max_usd`.
-3. `rsync`s the repo (including `customos.yaml`) to the instance, builds the Docker image there, runs `init.sh`.
+3. `rsync`s the repo (including `mayaos.yaml`) to the instance, builds the Docker image there, runs `init.sh`.
 4. `init.sh` iterates every `enabled: true` profile: `lunch ${lunch_target} && m -j` per profile, packaging into `out/<profile-id>/`.
 5. Smoke-boot CI job downloads the artifact, boots one image under `swiftshader_indirect` for 30 s, asserts `ro.product.brand == samsung`. `continue-on-error: true` for v1 (the GH-hosted runner may lack nested KVM).
 6. R2 upload (if `R2_*` secrets set) -> `<bucket>/<prefix><version>-<gitsha>/<profile-id>/<files>`.
@@ -97,7 +97,7 @@ REPO=tech-sumit/android-oem-pipeline
 gh secret set R2_ACCOUNT_ID        --repo "$REPO" --body "<your-cf-account-id>"
 gh secret set R2_ACCESS_KEY_ID     --repo "$REPO" --body "<r2-token-access-key>"
 gh secret set R2_SECRET_ACCESS_KEY --repo "$REPO" --body "<r2-token-secret>"
-gh secret set R2_BUCKET            --repo "$REPO" --body "customos-aosp-builds"
+gh secret set R2_BUCKET            --repo "$REPO" --body "mayaos-aosp-builds"
 ```
 
 Get the credentials from the Cloudflare dashboard:
@@ -120,9 +120,9 @@ gh auth login
 ./vast/search.sh                       # show top 5 candidate offers
 ./vast/provision.sh <offer_id>         # rent it; saves id to vast/.instance_id
 
-# 2. sync + build (mounts customos.yaml at /srv/config/ in the container)
+# 2. sync + build (mounts mayaos.yaml at /srv/config/ in the container)
 ./vast/sync-source.sh
-PROFILES=galaxy-s24-ultra ./vast/kick-build.sh
+PROFILES=galaxy-s26-ultra ./vast/kick-build.sh
 
 # 3. fetch artifacts
 ./vast/fetch-artifacts.sh              # rsync /srv/out/ -> ./out/<ts>/
@@ -131,7 +131,7 @@ PROFILES=galaxy-s24-ultra ./vast/kick-build.sh
 ./vast/destroy.sh
 ```
 
-`PROFILES` is comma-separated; omit it to build every `enabled: true` profile in `customos.yaml`.
+`PROFILES` is comma-separated; omit it to build every `enabled: true` profile in `mayaos.yaml`.
 
 ### Booting a built image locally
 
@@ -139,8 +139,8 @@ PROFILES=galaxy-s24-ultra ./vast/kick-build.sh
 # Linux only; Cuttlefish needs KVM (won't run on Windows / macOS hosts).
 sudo apt install -y google-cuttlefish-base
 mkdir cf && cd cf
-tar xf ../out/galaxy-s24-ultra/cvd-host_package.tar.gz
-unzip ../out/galaxy-s24-ultra/galaxy-s24-ultra-img-*.zip
+tar xf ../out/galaxy-s26-ultra/cvd-host_package.tar.gz
+unzip ../out/galaxy-s26-ultra/galaxy-s26-ultra-img-*.zip
 HOME=$PWD ./bin/launch_cvd
 # In another terminal:
 adb shell getprop ro.product.brand   # -> samsung
@@ -152,10 +152,10 @@ adb shell getprop ro.build.fingerprint
 
 ```text
 .
-├── customos.yaml          single source of truth (multi-profile schema)
+├── mayaos.yaml          single source of truth (multi-profile schema)
 ├── docker/                AOSP build container (Ubuntu 22.04 + JDK 21 + ccache + repo + yq)
-├── device-tree/customos/
-│   └── galaxy-s24-ultra/  v1 profile - Samsung SM-S928B spoof + features XML
+├── device-tree/mayaos/
+│   └── galaxy-s26-ultra/  v1 profile - Samsung SM-S948B spoof + features XML
 ├── manifests/             repo local_manifests fragment (placeholder)
 ├── ca/                    public root CA PEMs (private keys are gitignored)
 ├── pipeline/              container entrypoint + per-phase hooks
@@ -172,7 +172,7 @@ adb shell getprop ro.build.fingerprint
 
 ## Cost guardrails
 
-`customos.yaml`'s `vast.dph_max_usd` is a hard cap on the per-hour rate `./vast/search.sh` will accept. The default is `$0.80/hr`; a full build is roughly:
+`mayaos.yaml`'s `vast.dph_max_usd` is a hard cap on the per-hour rate `./vast/search.sh` will accept. The default is `$0.80/hr`; a full build is roughly:
 
 | Phase | Wall time | Cost @ $0.40/hr |
 |---|---|---|
@@ -188,13 +188,13 @@ adb shell getprop ro.build.fingerprint
 ## Security model
 
 - **Private keys** (CA private keys, AOSP signing keys, Vast API key) are **never** committed. `.gitignore` and `gitleaks` enforce this.
-- **Demo CA** (`ca/customos-root-ca.pem`) is committed for first-run convenience; it is public and self-signed and has no power. To use a real CA, run `./scripts/add-ca.sh /path/to/real.pem` &mdash; the public PEM gets staged into the device tree, the private key stays on your laptop.
+- **Demo CA** (`ca/mayaos-root-ca.pem`) is committed for first-run convenience; it is public and self-signed and has no power. To use a real CA, run `./scripts/add-ca.sh /path/to/real.pem` &mdash; the public PEM gets staged into the device tree, the private key stays on your laptop.
 - **Build signing** uses AOSP test keys for v0. Production should use a dedicated key set; see `docs/architecture.md#signing`.
 - **CA reach** in v1 is `/system/etc/security/cacerts/`; for Android 14+ apps that explicitly use the new Conscrypt APEX trust store, see [`docs/conscrypt-apex.md`](docs/conscrypt-apex.md) for the v2 plan.
 
 ## Roadmap
 
-- [x] v1 build pipeline + Galaxy S24 Ultra profile
+- [x] v1 build pipeline + Galaxy S26 Ultra profile
 - [x] CI-driven workflow with R2 + GH Release
 - [x] Spoof parity lint
 - [ ] First successful AOSP 16 build on Vast.ai (will fire when this PR's predecessor lands and we kick a build)

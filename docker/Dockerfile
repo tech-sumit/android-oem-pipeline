@@ -8,13 +8,13 @@
 #   - cdlee/aosp-builder                    (Ubuntu 22.04 minimal base)
 #
 # This is intentionally NOT based on a third-party AOSP image; we want full
-# control of the apt set so we can pin AOSP 16 prereqs (which need a newe
+# control of the apt set so we can pin AOSP 16 prereqs (which need a newer
 # build-essential and JDK than older bases ship).
 #
 FROM ubuntu:22.04
 
 LABEL org.opencontainers.image.source="https://github.com/tech-sumit/android-oem-pipeline"
-LABEL org.opencontainers.image.description="AOSP 16 build environment for the CustomOS OEM flavor"
+LABEL org.opencontainers.image.description="AOSP 16 build environment for the MayaOS OEM flavor"
 LABEL org.opencontainers.image.licenses="Proprietary"
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -48,7 +48,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     && update-ca-certificates
 
 # ---------------------------------------------------------------------------
-# yq (mikefarah/yq v4). The pipeline reads /srv/config/customos.yaml at boot
+# yq (mikefarah/yq v4). The pipeline reads /srv/config/mayaos.yaml at boot
 # to decide branch / lunch target / profiles. Pinned to a known release so
 # the build is reproducible even if mikefarah cuts a new tag mid-run.
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ ENV SRC_DIR=/srv/src \
     DEVICETREE_DIR=/srv/devicetree \
     CACERTS_DIR=/srv/cacerts \
     CONFIG_DIR=/srv/config \
-    CONFIG_FILE=/srv/config/customos.yaml
+    CONFIG_FILE=/srv/config/mayaos.yaml
 
 RUN install -d -o build -g build \
         "$SRC_DIR" "$CCACHE_DIR" "$OUT_DIR" "$KEYS_DIR" "$LOGS_DIR" \
@@ -118,7 +118,7 @@ WORKDIR /srv/src
 ENV CCACHE_MAX_SIZE=50G \
     AOSP_BRANCH=android-16.0.0_r4 \
     AOSP_MANIFEST_URL=https://android.googlesource.com/platform/manifest \
-    LUNCH_TARGET=customos_cf_x86_64_phone-userdebug \
+    LUNCH_TARGET=mayaos_cf_s26ultra-trunk_staging-userdebug \
     PARALLEL_JOBS=
 
 ENTRYPOINT ["/opt/pipeline/init.sh"]

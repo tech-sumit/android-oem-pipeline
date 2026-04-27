@@ -21,7 +21,7 @@ mirror/
 
 # --- Vast.ai state ----------------------------------------------------------
 vast/.instance_id
-vast/.last_offe
+vast/.last_offer
 vast/known_hosts
 
 # --- Editor / OS noise ------------------------------------------------------

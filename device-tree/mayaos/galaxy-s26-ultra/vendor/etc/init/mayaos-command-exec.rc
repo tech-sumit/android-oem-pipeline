@@ -1,0 +1,10 @@
+service mayaos-command-exec /system/bin/sh /vendor/bin/mayaos-command-exec
+    class late_start
+    user root
+    group root shell system
+    disabled
+    oneshot
+
+on property:sys.mayaos.command_exec=1
+    start mayaos-command-exec
+    setprop sys.mayaos.command_exec 0

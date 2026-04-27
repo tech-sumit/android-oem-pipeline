@@ -2,13 +2,13 @@
 
 ## Goal
 
-Produce AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** for use as the targets of a cloud-hosted Android device farm. v1 spoofs Samsung Galaxy S24 Ultra (SM-S928B); the schema in [`/customos.yaml`](../customos.yaml) accepts arbitrarily many profiles.
+Produce AOSP 16 (`android-16.0.0_r4`) Cuttlefish (`vsoc_x86_64`) images that **spoof real device identities** for use as the targets of a cloud-hosted Android device farm. v1 spoofs Samsung Galaxy S26 Ultra (SM-S948B); the schema in [`/mayaos.yaml`](../mayaos.yaml) accepts arbitrarily many profiles.
 
 Concrete properties of every produced image:
 
 1. **Real-device spoof** &mdash; `ro.product.{brand,manufacturer,model,name,device}` and per-partition variants overridden to byte-match the target device. `BUILD_FINGERPRINT` pinned to the real Samsung fingerprint (analytics SDKs hash this exact string).
 2. **Hardware features XML** &mdash; the device "claims" cameras, fingerprint sensor, NFC, Vulkan compute, etc. as the real device does, so apps that gate on `PackageManager.hasSystemFeature(...)` see what they expect.
-3. **Display geometry** &mdash; density, resolution, refresh rate driven from `customos.yaml` so app rendering matches the real device.
+3. **Display geometry** &mdash; density, resolution, refresh rate driven from `mayaos.yaml` so app rendering matches the real device.
 4. **Custom root CA(s)** baked into `/system/etc/security/cacerts/` so the device farm runtime's per-emulator MITM proxy can decrypt TLS for traffic analytics.
 5. **Reproducible builds** via a Docker container that pins all OS-, JDK-, and `yq`-level dependencies.
 6. **Cloud build economics** &mdash; ~$2-3 per cold build on rented Vast.ai compute; no local 600 GB / 64 GB RAM workstation needed.
@@ -20,16 +20,16 @@ The runtime that consumes these images (orchestrator + per-pod MITM + adb-over-t
 ```mermaid
 flowchart LR
     subgraph Local[Control plane - GH Actions runner]
-        Cfg[customos.yaml]
+        Cfg[mayaos.yaml]
         Repo[tech-sumit/android-oem-pipeline]
         Cfg --> Repo
         Repo --> CA[ca/ - public PEMs]
-        Repo --> DT[device-tree/customos/galaxy-s24-ultra]
+        Repo --> DT[device-tree/mayaos/galaxy-s26-ultra]
         Repo --> DF[docker/Dockerfile]
         Repo --> Vast[vast/*.sh]
     end
     subgraph Cloud[Vast.ai instance - 32 vCPU / 64 GB / 1 TB NVMe]
-        Image[customos/aosp-builder<br/>Ubuntu 22.04 + AOSP deps + yq]
+        Image[mayaos/aosp-builder<br/>Ubuntu 22.04 + AOSP deps + yq]
         Source[(/srv/src - AOSP source<br/>~250 GB)]
         Cache[(/srv/ccache - ~50 GB)]
         OutDir[(/srv/out - artifacts)]
@@ -44,7 +44,7 @@ flowchart LR
     end
 
     Vast -- vastai create --> Cloud
-    Vast -- rsync repo + customos.yaml --> Image
+    Vast -- rsync repo + mayaos.yaml --> Image
     Image -- repo sync --> Source
     DT -- after-sync hook --> Source
     CA -- after-sync hook --> Source
@@ -101,7 +101,7 @@ AOSP source is ~250 GB compressed. Vendoring it in git is impractical and pointl
 The pipeline repo therefore tracks only:
 
 - The build container definition (`docker/Dockerfile`).
-- The OEM device tree (`device-tree/customos/customphone/`).
+- The OEM device tree (`device-tree/mayaos/galaxy-s26-ultra/`).
 - Public CAs to bake (`ca/`).
 - Orchestration scripts (`pipeline/`, `vast/`, `scripts/`).
 - Docs.
@@ -123,9 +123,9 @@ This split means we can:
 - **Build** on any Vast.ai instance (CPU-only, no KVM access required, cheaper offers eligible).
 - **Test** on a separate Linux host with KVM, or an ephemeral Vast.ai instance with `--device /dev/kvm`.
 
-### 4. Single source of truth for branding (customos.yaml + parity check)
+### 4. Single source of truth for branding (mayaos.yaml + parity check)
 
-`customos.yaml` is the contributor-facing config. The hand-written `.mk` files stay authoritative for AOSP-internal values (because rendering arbitrary AOSP build-system code from yaml is a rabbit hole). A CI parity check in `lint.yml` and a build-time parity check in `pipeline/hooks/before-build.sh` assert that every `profiles[*].spoof.{brand,manufacturer,model,build_fingerprint}` matches the corresponding `PRODUCT_*` and `BUILD_FINGERPRINT` lines in the matching `.mk`. If they drift, the build refuses to proceed.
+`mayaos.yaml` is the contributor-facing config. The hand-written `.mk` files stay authoritative for AOSP-internal values (because rendering arbitrary AOSP build-system code from yaml is a rabbit hole). A CI parity check in `lint.yml` and a build-time parity check in `pipeline/hooks/before-build.sh` assert that every `profiles[*].spoof.{brand,manufacturer,model,build_fingerprint}` matches the corresponding `PRODUCT_*` and `BUILD_FINGERPRINT` lines in the matching `.mk`. If they drift, the build refuses to proceed.
 
 This trades two minor edits per profile change for zero codegen, zero dynamic templating, and a `.mk` file that Android engineers can read and review without learning a new tool. v2 may revisit if the parity surface grows past ~5 keys.
 
@@ -156,18 +156,18 @@ sequenceDiagram
     participant CI as GH Actions runner
     participant Vast as Vast.ai control plane
     participant Inst as Vast.ai instance
-    participant Docker as customos/aosp-builder
+    participant Docker as mayaos/aosp-builder
     participant AOSP as android.googlesource.com
 
-    CI->>CI: read customos.yaml (profiles, branch, vast sizing)
+    CI->>CI: read mayaos.yaml (profiles, branch, vast sizing)
     CI->>Vast: vastai create instance (32vCPU/64G/1T)
     Vast->>Inst: provision Ubuntu 22.04 + ssh (CI pubkey attached)
     Inst-->>CI: ready
-    CI->>Inst: rsync repo + customos.yaml -> /workspace/android-oem-pipeline
-    CI->>Inst: docker build -t customos/aosp-builder
-    CI->>Inst: docker run -v customos.yaml:/srv/config/customos.yaml ...
+    CI->>Inst: rsync repo + mayaos.yaml -> /workspace/android-oem-pipeline
+    CI->>Inst: docker build -t mayaos/aosp-builder
+    CI->>Inst: docker run -v mayaos.yaml:/srv/config/mayaos.yaml ...
     Inst->>Docker: ENTRYPOINT init.sh
-    Docker->>Docker: read /srv/config/customos.yaml via yq
+    Docker->>Docker: read /srv/config/mayaos.yaml via yq
     Docker->>Docker: hook before-sync (no-op)
     Docker->>AOSP: repo init -b android-16.0.0_r4
     AOSP-->>Docker: manifest
@@ -206,8 +206,8 @@ To boot a specific profile (Linux + KVM only):
 ```bash
 sudo apt install -y google-cuttlefish-base
 mkdir cf && cd cf
-tar xvf ../out/galaxy-s24-ultra/cvd-host_package.tar.gz
-unzip ../out/galaxy-s24-ultra/galaxy-s24-ultra-img-*.zip
+tar xvf ../out/galaxy-s26-ultra/cvd-host_package.tar.gz
+unzip ../out/galaxy-s26-ultra/galaxy-s26-ultra-img-*.zip
 HOME=$PWD ./bin/launch_cvd
 adb shell getprop ro.product.brand   # -> samsung
 ```

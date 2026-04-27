@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Verify that a built CustomOS image carries our custom CA(s) and OEM branding.
+# Verify that a built MayaOS image carries our custom CA(s) and OEM branding.
 # Run this AFTER you've booted the image with `launch_cvd` (Cuttlefish runtime).
 #
 # Checks:
 #   1. adb is connected to a cuttlefish device
-#   2. ro.product.brand        == CustomOS
-#   3. ro.oem.flavor           == customos
+#   2. ro.product.brand        == samsung
+#   3. ro.oem.flavor           == galaxy-s26-ultra
 #   4. /system/etc/security/cacerts/<hash>.0 exists for every CA in ca/
 #   5. The CA on the device is byte-identical to the one in ca/
 #
@@ -37,11 +37,11 @@ brand=$(adb shell getprop ro.product.brand | tr -d '\r')
 flavor=$(adb shell getprop ro.oem.flavor | tr -d '\r')
 build_tag=$(adb shell getprop ro.oem.build.tag | tr -d '\r')
 
-if [[ "$brand" == "CustomOS" ]]; then ok "ro.product.brand=$brand"
-else fail "ro.product.brand=$brand (expected CustomOS)"; failures=$((failures+1)); fi
+if [[ "$brand" == "samsung" ]]; then ok "ro.product.brand=$brand"
+else fail "ro.product.brand=$brand (expected samsung)"; failures=$((failures+1)); fi
 
-if [[ "$flavor" == "customos" ]]; then ok "ro.oem.flavor=$flavor"
-else fail "ro.oem.flavor=$flavor (expected customos)"; failures=$((failures+1)); fi
+if [[ "$flavor" == "galaxy-s26-ultra" ]]; then ok "ro.oem.flavor=$flavor"
+else fail "ro.oem.flavor=$flavor (expected galaxy-s26-ultra)"; failures=$((failures+1)); fi
 
 if [[ -n "$build_tag" ]]; then ok "ro.oem.build.tag=$build_tag"
 else fail "ro.oem.build.tag is empty"; failures=$((failures+1)); fi

@@ -1,6 +1,6 @@
 name: release
 
-# Post-merge-driven AOSP build for the CustomOS Device Farm. Fires on every
+# Post-merge-driven AOSP build for the MayaOS Device Farm. Fires on every
 # push to main (i.e. when a PR is merged) and on manual dispatch. The actual
 # ~5h AOSP build runs on a rented Vast.ai instance; this runner just orchestrates.
 #
@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       aosp_branch:
-        description: 'AOSP branch/tag (overrides customos.yaml aosp.branch)'
+        description: 'AOSP branch/tag (overrides mayaos.yaml aosp.branch)'
         default: ''
         required: false
       profiles:
@@ -67,14 +67,14 @@ jobs:
           pipx install vastai
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Read customos.yaml -> job outputs
+      - name: Read mayaos.yaml -> job outputs
         id: config
         run: |
-          IMAGE_NAME=$(yq eval '.image.name' customos.yaml)
-          IMAGE_VERSION=$(yq eval '.image.version' customos.yaml)
-          PROFILES=$(yq eval '.profiles[] | select(.enabled == true) | .id' customos.yaml | tr '\n' ',' | sed 's/,$//')
-          R2_BUCKET=$(yq eval '.release.r2.bucket' customos.yaml)
-          R2_PREFIX=$(yq eval '.release.r2.prefix' customos.yaml)
+          IMAGE_NAME=$(yq eval '.image.name' mayaos.yaml)
+          IMAGE_VERSION=$(yq eval '.image.version' mayaos.yaml)
+          PROFILES=$(yq eval '.profiles[] | select(.enabled == true) | .id' mayaos.yaml | tr '\n' ',' | sed 's/,$//')
+          R2_BUCKET=$(yq eval '.release.r2.bucket' mayaos.yaml)
+          R2_PREFIX=$(yq eval '.release.r2.prefix' mayaos.yaml)
           {
               echo "image_name=${IMAGE_NAME}"
               echo "image_version=${IMAGE_VERSION}"
@@ -106,7 +106,7 @@ jobs:
         id: provision
         run: |
           OFFER=$(./vast/search.sh | awk 'NR>2 && $1 ~ /^[0-9]+$/ {print $1; exit}')
-          [[ -n "$OFFER" ]] || { echo "::error::no Vast.ai offer matched the cpu_min/ram/disk/dph_max filters; tighten or relax customos.yaml.vast"; exit 1; }
+          [[ -n "$OFFER" ]] || { echo "::error::no Vast.ai offer matched the cpu_min/ram/disk/dph_max filters; tighten or relax mayaos.yaml.vast"; exit 1; }
           echo "Selected offer: ${OFFER}"
           ./vast/provision.sh "$OFFER"
           INSTANCE_ID=$(cat vast/.instance_id)
@@ -127,7 +127,7 @@ jobs:
       - name: Upload artifacts as workflow-scoped GH artifact
         uses: actions/upload-artifact@v4
         with:
-          name: customos-build-${{ github.sha }}
+          name: mayaos-build-${{ github.sha }}
           path: out/**
           if-no-files-found: error
           retention-days: 14
@@ -148,7 +148,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: customos-build-${{ github.sha }}
+          name: mayaos-build-${{ github.sha }}
           path: out/
 
       - name: Install cuttlefish-base + adb
@@ -220,7 +220,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: customos-build-${{ github.sha }}
+          name: mayaos-build-${{ github.sha }}
           path: out/
 
       - name: Detect R2 secrets
@@ -299,7 +299,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: customos-build-${{ github.sha }}
+          name: mayaos-build-${{ github.sha }}
           path: out/
 
       - name: Compose release body
@@ -312,7 +312,7 @@ jobs:
           set -Eeuo pipefail
           GITSHA="${GITHUB_SHA::12}"
           {
-              echo "## CustomOS Device Farm v${IMAGE_VERSION} (${GITSHA})"
+              echo "## MayaOS Device Farm v${IMAGE_VERSION} (${GITSHA})"
               echo
               echo "Built from \`${GITHUB_REF}\` @ \`${GITHUB_SHA}\`."
               echo

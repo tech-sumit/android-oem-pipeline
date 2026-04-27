@@ -7,7 +7,7 @@
 # What we check:
 #   1. The lunch combo is visible to AOSP's build system.
 #   2. The .mk file's PRODUCT_BRAND / PRODUCT_MODEL / PRODUCT_MANUFACTURER /
-#      BUILD_FINGERPRINT match customos.yaml's profiles[id=$CURRENT].spoof.*.
+#      BUILD_FINGERPRINT match mayaos.yaml's profiles[id=$CURRENT].spoof.*.
 #      If they drift, fail fast with a clear error -- this is the v1 safety
 #      net for the hand-written-.mk approach (vs codegen).
 #
@@ -45,20 +45,21 @@ cd "$SRC_DIR"
 
 # ---- 2. spoof parity (yaml vs .mk) ----------------------------------------
 if ! config_present; then
-    log_warn "  no customos.yaml -> skipping spoof parity check"
+    log_warn "  no mayaos.yaml -> skipping spoof parity check"
     exit 0
 fi
 
-profile_dir="$(profile_get "$PID" '.device_tree' "device-tree/customos/${PID}")"
+profile_dir="$(profile_get "$PID" '.device_tree' "device-tree/mayaos/${PID}")"
+profile_src_rel="${profile_dir#device-tree/}"
 mk_name="$(profile_get "$PID" '.product_makefile' '')"
 if [[ -z "$mk_name" ]]; then
-    log_error "profile '${PID}' has no product_makefile in customos.yaml"
+    log_error "profile '${PID}' has no product_makefile in mayaos.yaml"
     exit 1
 fi
-mk_path="${SRC_DIR}/device/customos/${PID}/${mk_name}"
+mk_path="${SRC_DIR}/device/${profile_src_rel}/${mk_name}"
 
 if [[ ! -r "$mk_path" ]]; then
-    log_error "expected makefile at ${mk_path} (from customos.yaml); not found"
+    log_error "expected makefile at ${mk_path} (from mayaos.yaml); not found"
     log_error "  profile_dir from yaml: ${profile_dir}"
     exit 1
 fi
@@ -101,7 +102,7 @@ check_pair "BUILD_FINGERPRINT"    "$y_fingerprint" "$mk_fingerprint"
 
 if [[ "$mismatches" -ne 0 ]]; then
     log_error "before-build: ${mismatches} spoof field(s) drifted between" \
-              "customos.yaml and ${mk_path}"
+              "mayaos.yaml and ${mk_path}"
     log_error "  fix one or the other and re-run; we refuse to ship a build" \
               "where the .mk and yaml disagree."
     exit 1

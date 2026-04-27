@@ -2,33 +2,33 @@
 #
 # Phase 3: after repo sync, before lunch.
 #
-# Splices the CustomOS device tree (every profile under /srv/devicetree/customos/*)
-# into the freshly synced AOSP source at $SRC_DIR/device/customos/, then stages
+# Splices the MayaOS device tree (every profile under /srv/devicetree/mayaos/*)
+# into the freshly synced AOSP source at $SRC_DIR/device/mayaos/, then stages
 # every CA in /srv/cacerts into EACH profile's security/cacerts/ subdir with
 # the Android-style hashed filename.
 #
 # /srv/devicetree (host bind mount) is treated as authoritative -- we wipe
-# device/customos in the AOSP tree and copy fresh on every build so a
+# device/mayaos in the AOSP tree and copy fresh on every build so a
 # `git status` inside AOSP is always clean except for our overlay.
 #
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "/opt/pipeline/lib.sh"
 
-DEVICE_DST="${SRC_DIR}/device/customos"
+DEVICE_DST="${SRC_DIR}/device/mayaos"
 
-log_info "after-sync: splicing CustomOS device tree into AOSP source"
+log_info "after-sync: splicing MayaOS device tree into AOSP source"
 
-if [[ ! -d "$DEVICETREE_DIR/customos" ]]; then
-    log_error "expected $DEVICETREE_DIR/customos to be bind-mounted; not found"
+if [[ ! -d "$DEVICETREE_DIR/mayaos" ]]; then
+    log_error "expected $DEVICETREE_DIR/mayaos to be bind-mounted; not found"
     exit 1
 fi
 
 # Refresh the device tree overlay.
 rm -rf "$DEVICE_DST"
 mkdir -p "$(dirname "$DEVICE_DST")"
-cp -a "$DEVICETREE_DIR/customos" "$DEVICE_DST"
-log_info "  copied $DEVICETREE_DIR/customos -> $DEVICE_DST"
+cp -a "$DEVICETREE_DIR/mayaos" "$DEVICE_DST"
+log_info "  copied $DEVICETREE_DIR/mayaos -> $DEVICE_DST"
 
 # Stage CAs into every profile's security/cacerts dir. We discover profiles
 # by globbing the device tree -- this avoids tying the after-sync hook to the
@@ -66,9 +66,9 @@ else
 fi
 
 # Sanity: at least one AndroidProducts.mk must be visible.
-if ! find "${SRC_DIR}/device/customos" -maxdepth 3 -name AndroidProducts.mk \
+if ! find "${SRC_DIR}/device/mayaos" -maxdepth 3 -name AndroidProducts.mk \
         | grep -q .; then
-    log_error "no AndroidProducts.mk found under device/customos/; aborting"
+    log_error "no AndroidProducts.mk found under device/mayaos/; aborting"
     exit 1
 fi
 

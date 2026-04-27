@@ -19,13 +19,13 @@ OFFER_ID="${1:-}"
 # vast/sync-source.sh + vast/kick-build.sh, not pre-baked.
 IMAGE="${VAST_IMAGE:-ubuntu:22.04}"
 DISK_GB="${DISK_GB:-1024}"
-LABEL="${VAST_LABEL:-customos-aosp-builder}"
+LABEL="${VAST_LABEL:-mayaos-aosp-builder}"
 
 # Inject our SSH pubkey so we can ssh in without password.
 SSH_KEY="$(ssh_key_path)"
 if [[ ! -f "${SSH_KEY}.pub" ]]; then
     log "no ssh keypair at ${SSH_KEY}; generating..."
-    ssh-keygen -t ed25519 -N '' -f "$SSH_KEY" -C "vast.ai customos build $(date -u +%F)"
+    ssh-keygen -t ed25519 -N '' -f "$SSH_KEY" -C "vast.ai mayaos build $(date -u +%F)"
 fi
 
 log "creating Vast.ai instance from offer ${OFFER_ID} (image=${IMAGE}, disk=${DISK_GB}G)"

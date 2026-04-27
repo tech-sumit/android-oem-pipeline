@@ -55,7 +55,7 @@ Three options to keep ccache + source warm:
 2. **Snapshot to S3 / Backblaze B2** at end of build. Roughly:
   ```bash
    ./vast/ssh.sh 'cd /workspace && tar c aosp-ccache | zstd -T0 > ccache.tzst'
-   ./vast/ssh.sh 'aws s3 cp /workspace/ccache.tzst s3://customos-ccache/$(date -u +%F).tzst'
+   ./vast/ssh.sh 'aws s3 cp /workspace/ccache.tzst s3://mayaos-ccache/$(date -u +%F).tzst'
    ./vast/destroy.sh
   ```
    Restore on a new instance with the inverse. ~50 GB ccache compresses to

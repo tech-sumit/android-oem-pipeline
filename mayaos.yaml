@@ -1,7 +1,7 @@
-# customos.yaml -- single source of truth for the build pipeline.
+# mayaos.yaml -- single source of truth for the build pipeline.
 #
 # Edits here flow into the AOSP build via pipeline/init.sh (which uses `yq` to
-# read this file at /srv/config/customos.yaml inside the container) and into
+# read this file at /srv/config/mayaos.yaml inside the container) and into
 # the GitHub Actions release workflow (which reads the same fields to compute
 # image names, R2 keys, and release tags).
 #
@@ -17,8 +17,8 @@
 #     than letting it fall through to a $5/hr offer).
 
 image:
-  name: customos-devicefarm
-  display_name: CustomOS Device Farm
+  name: mayaos-devicefarm
+  display_name: MayaOS Device Farm
   version: "1.0.0"
   vendor: tech-sumit
 
@@ -33,14 +33,15 @@ aosp:
 # Device profiles. v1 builds only `enabled: true` profiles; pipeline iterates
 # `lunch ${profile.lunch_target} && m -j` per profile and packages each into
 # its own out/<profile-id>/ subdir. The hand-written .mk for each profile
-# lives at device-tree/customos/<id>/customos_cf_<short>.mk.
+# lives at device-tree/mayaos/<id>/mayaos_cf_<short>.mk.
 # ---------------------------------------------------------------------------
 profiles:
-  - id: galaxy-s24-ultra
+  - id: galaxy-s26-ultra-intel-gpu
     enabled: true
-    lunch_target: customos_cf_s24ultra-userdebug
-    device_tree: device-tree/customos/galaxy-s24-ultra
-    product_makefile: customos_cf_s24ultra.mk
+    lunch_target: mayaos_cf_s26ultra-trunk_staging-userdebug
+    device_tree: device-tree/mayaos/galaxy-s26-ultra
+    product_makefile: mayaos_cf_s26ultra.mk
+    runtime_target: intel-gpu
 
     # Branding spoof. Every key here flows into PRODUCT_PROPERTY_OVERRIDES /
     # build.prop via the matching .mk. The pipeline's parity check (lint
@@ -48,12 +49,12 @@ profiles:
     spoof:
       brand: samsung
       manufacturer: samsung
-      model: SM-S928B
-      product: e3qxxx
-      device: e3q
-      name: e3qxxx
-      build_id: AP3A.240905.015.A2
-      build_fingerprint: "samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys"
+      model: SM-S948B
+      product: s26uxxx
+      device: s26u
+      name: s26uxxx
+      build_id: BP1A.250505.005
+      build_fingerprint: "samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys"
 
     display:
       width_px: 1440
@@ -67,9 +68,91 @@ profiles:
       cpu_cores: 8
       fingerprint_sensor: optical_under_display
       # Hardware features written verbatim into
-      #   frameworks/native/data/etc/customos_<id>.xml
+      #   frameworks/native/data/etc/mayaos_<id>.xml
       # which is then dropped into the system image. Apps query these via
       # PackageManager.hasSystemFeature(...).
+      features:
+        - android.hardware.camera
+        - android.hardware.camera.front
+        - android.hardware.camera.flash
+        - android.hardware.camera.autofocus
+        - android.hardware.camera.any
+        - android.hardware.fingerprint
+        - android.hardware.nfc
+        - android.hardware.nfc.hce
+        - android.hardware.telephony
+        - android.hardware.telephony.gsm
+        - android.hardware.sensor.accelerometer
+        - android.hardware.sensor.gyroscope
+        - android.hardware.sensor.proximity
+        - android.hardware.sensor.compass
+        - android.hardware.sensor.light
+        - android.hardware.sensor.barometer
+        - android.hardware.sensor.stepcounter
+        - android.hardware.sensor.stepdetector
+        - android.hardware.wifi
+        - android.hardware.wifi.direct
+        - android.hardware.bluetooth
+        - android.hardware.bluetooth_le
+        - android.hardware.location
+        - android.hardware.location.gps
+        - android.hardware.location.network
+        - android.hardware.usb.host
+        - android.hardware.usb.accessory
+        - android.hardware.touchscreen
+        - android.hardware.touchscreen.multitouch
+        - android.hardware.touchscreen.multitouch.distinct
+        - android.hardware.touchscreen.multitouch.jazzhand
+        - android.hardware.faketouch
+        - android.hardware.screen.portrait
+        - android.hardware.screen.landscape
+        - android.hardware.vulkan.level
+        - android.hardware.vulkan.version
+        - android.hardware.vulkan.compute
+        - android.software.app_widgets
+        - android.software.connectionservice
+        - android.software.input_methods
+        - android.software.print
+        - android.software.midi
+        - android.software.cant_save_state
+        - android.software.webview
+        - android.software.activities_on_secondary_displays
+      camera:
+        rear: ["200MP_main", "12MP_ultrawide", "10MP_tele3x", "50MP_tele5x"]
+        front: ["12MP"]
+      telephony:
+        sim_count: 2
+        default_operator: Verizon
+        country_iso: us
+
+  - id: galaxy-s26-ultra-apple-silicon
+    enabled: true
+    lunch_target: mayaos_cf_s26ultra_arm64-trunk_staging-userdebug
+    device_tree: device-tree/mayaos/galaxy-s26-ultra
+    product_makefile: mayaos_cf_s26ultra_arm64.mk
+    runtime_target: apple-silicon
+
+    spoof:
+      brand: samsung
+      manufacturer: samsung
+      model: SM-S948B
+      product: s26uxxx
+      device: s26u
+      name: s26uxxx
+      build_id: BP1A.250505.005
+      build_fingerprint: "samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys"
+
+    display:
+      width_px: 1440
+      height_px: 3120
+      density_dpi: 505
+      refresh_rate_hz: 120
+      cutout: punch_hole_center
+
+    hardware:
+      ram_mb: 12288
+      cpu_cores: 8
+      fingerprint_sensor: optical_under_display
       features:
         - android.hardware.camera
         - android.hardware.camera.front
@@ -128,9 +211,9 @@ profiles:
   # docs/device-farm.md and the GH Release table stay informative.
   - id: pixel-8-pro
     enabled: false
-    lunch_target: customos_cf_pixel8pro-userdebug
-    device_tree: device-tree/customos/pixel-8-pro  # not yet created
-    product_makefile: customos_cf_pixel8pro.mk
+    lunch_target: mayaos_cf_pixel8pro-userdebug
+    device_tree: device-tree/mayaos/pixel-8-pro  # not yet created
+    product_makefile: mayaos_cf_pixel8pro.mk
     spoof:
       brand: google
       manufacturer: Google
@@ -159,7 +242,7 @@ profiles:
 # This list is purely informational; do not rely on it for build behavior.
 # ---------------------------------------------------------------------------
 cas:
-  - ca/customos-root-ca.pem
+  - ca/mayaos-root-ca.pem
 
 build:
   parallel_jobs: ""        # empty -> $(nproc) on the build host
@@ -176,7 +259,7 @@ vast:
 
 release:
   r2:
-    bucket: customos-aosp-builds
+    bucket: android
     prefix: builds/
     # Final R2 key:
     #   <bucket>/<prefix><profile-id>/<version>-<gitsha>/<file>

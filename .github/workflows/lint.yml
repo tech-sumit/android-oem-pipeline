@@ -67,7 +67,7 @@ jobs:
           done
 
   validate-config:
-    name: validate customos.yaml + device-tree parity
+    name: validate mayaos.yaml + device-tree parity
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -80,13 +80,13 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
-      - name: customos.yaml parses
+      - name: mayaos.yaml parses
         run: |
-          yq eval '.' customos.yaml > /dev/null
-          echo "image: $(yq eval '.image.name' customos.yaml) v$(yq eval '.image.version' customos.yaml)"
-          echo "AOSP branch: $(yq eval '.aosp.branch' customos.yaml)"
+          yq eval '.' mayaos.yaml > /dev/null
+          echo "image: $(yq eval '.image.name' mayaos.yaml) v$(yq eval '.image.version' mayaos.yaml)"
+          echo "AOSP branch: $(yq eval '.aosp.branch' mayaos.yaml)"
           echo "Profiles enabled:"
-          yq eval '.profiles[] | select(.enabled == true) | .id' customos.yaml | sed 's/^/  - /'
+          yq eval '.profiles[] | select(.enabled == true) | .id' mayaos.yaml | sed 's/^/  - /'
 
       - name: Per-profile parity (yaml <-> .mk <-> AndroidProducts.mk)
         run: |
@@ -98,11 +98,11 @@ jobs:
             echo "==  parity: ${pid}"
             echo "=========================="
 
-            mk_dir="device-tree/customos/${pid}"
-            mk_name=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .product_makefile" customos.yaml)
+            mk_dir="device-tree/mayaos/${pid}"
+            mk_name=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .product_makefile" mayaos.yaml)
             mk_path="${mk_dir}/${mk_name}"
             ap_path="${mk_dir}/AndroidProducts.mk"
-            lunch_target=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .lunch_target" customos.yaml)
+            lunch_target=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .lunch_target" mayaos.yaml)
 
             for f in "$mk_path" "$ap_path"; do
               if [[ ! -f "$f" ]]; then
@@ -122,7 +122,7 @@ jobs:
 
             # 2. spoof.brand / manufacturer / model / build_fingerprint match the .mk.
             for key in brand manufacturer model build_fingerprint; do
-              y=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.${key}" customos.yaml)
+              y=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.${key}" mayaos.yaml)
               case "$key" in
                 brand)             grep_key='PRODUCT_BRAND' ;;
                 manufacturer)      grep_key='PRODUCT_MANUFACTURER' ;;
@@ -141,12 +141,12 @@ jobs:
             done
 
             # 3. spoof.* fields also appear in PRODUCT_PROPERTY_OVERRIDES as ro.product.*.
-            y_brand=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.brand" customos.yaml)
+            y_brand=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.brand" mayaos.yaml)
             if ! grep -q "ro.product.brand=${y_brand}" "$mk_path"; then
               echo "::error::${pid}: ro.product.brand=${y_brand} not present in ${mk_path}"
               fail=1
             fi
-          done < <(yq eval '.profiles[] | select(.enabled == true) | .id' customos.yaml)
+          done < <(yq eval '.profiles[] | select(.enabled == true) | .id' mayaos.yaml)
 
           if [[ "$fail" -ne 0 ]]; then
             echo "::error::config<->makefile parity check failed; see errors above."

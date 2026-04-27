@@ -53,10 +53,10 @@ ensure_dir() {
     install -d -o "$(id -u)" -g "$(id -g)" "$d"
 }
 
-# ---- customos.yaml helpers --------------------------------------------------
+# ---- mayaos.yaml helpers --------------------------------------------------
 # yq v4 is installed in the Dockerfile at /usr/local/bin/yq. The pipeline
 # expects the config to be bind-mounted at $CONFIG_FILE
-# (default /srv/config/customos.yaml). All helpers below tolerate a missing
+# (default /srv/config/mayaos.yaml). All helpers below tolerate a missing
 # config and fall back to env-var defaults the calling script already set --
 # this preserves the legacy "env-var only" path for ad-hoc local runs.
 

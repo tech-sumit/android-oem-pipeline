@@ -15,8 +15,8 @@ set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "/opt/pipeline/lib.sh"
 
-PID="${CURRENT_PROFILE_ID:-customos}"
-PRODUCT_OUT="${SRC_DIR}/out/target/product/vsoc_x86_64"
+PID="${CURRENT_PROFILE_ID:-mayaos}"
+PRODUCT_OUT="${CURRENT_PRODUCT_OUT:-${SRC_DIR}/out/target/product/vsoc_x86_64}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 ZIP_NAME="${PID}-img-${TS}.zip"
 PROFILE_OUT_DIR="${OUT_DIR}/${PID}"
@@ -62,7 +62,7 @@ else
              "consumer can fall back to the upstream from ci.android.com"
 fi
 
-# 3. Build fingerprint -- proves which CustomOS overlay produced this image.
+# 3. Build fingerprint -- proves which MayaOS overlay produced this image.
 if FINGERPRINT_RAW=$(grep -m1 '^ro.build.fingerprint=' \
         "${PRODUCT_OUT}/system/build.prop" 2>/dev/null); then
     echo "${FINGERPRINT_RAW#ro.build.fingerprint=}" \

@@ -48,29 +48,30 @@ vastai search offers "$QUERY" \
     --order 'dph_total' \
     --limit "$TOP_N" \
     --raw 2>/dev/null \
-| python3 -c "$(cat <<'PY'
-import json, sys
+| TOP_N="$TOP_N" python3 -c '
+import json, os, sys
 
-top_n = int(sys.argv[1])
+top_n = int(os.environ.get("TOP_N", "5"))
 offers = json.load(sys.stdin)
 if not offers:
     print("no offers match. Loosen DPH_MAX or CPU_MIN.", file=sys.stderr)
     sys.exit(1)
 
 cols = ("id", "$/hr", "vCPU", "RAM(G)", "Disk(G)", "Down", "Up", "host")
-print(f"{cols[0]:>9}  {cols[1]:>5}  {cols[2]:>5}  {cols[3]:>6}  {cols[4]:>7}  {cols[5]:>6}  {cols[6]:>6}  {cols[7]}")
+print("{:>9}  {:>5}  {:>5}  {:>6}  {:>7}  {:>6}  {:>6}  {}".format(*cols))
 print("-" * 90)
 for o in offers[:top_n]:
-    print(f"{o['id']:>9}  "
-          f"{o['dph_total']:>5.3f}  "
-          f"{int(o['cpu_cores']):>5}  "
-          f"{int(o['cpu_ram']):>6}  "
-          f"{int(o['disk_space']):>7}  "
-          f"{int(o.get('inet_down', 0)):>6}  "
-          f"{int(o.get('inet_up', 0)):>6}  "
-          f"{o.get('host_id','?')}")
+    print("{id:>9}  {dph:>5.3f}  {cpu:>5}  {ram:>6}  {disk:>7}  {down:>6}  {up:>6}  {host}".format(
+        id=o["id"],
+        dph=float(o["dph_total"]),
+        cpu=int(o["cpu_cores"]),
+        ram=int(o["cpu_ram"]),
+        disk=int(o["disk_space"]),
+        down=int(o.get("inet_down", 0)),
+        up=int(o.get("inet_up", 0)),
+        host=o.get("host_id", "?"),
+    ))
 
 print()
 print("Provision with: ./vast/provision.sh <id>")
-PY
-)" "$TOP_N"
+'

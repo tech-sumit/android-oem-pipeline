@@ -1,0 +1,42 @@
+#!/system/bin/sh
+#
+# MayaOS root command executor.
+#
+# Trigger with:
+#   adb root
+#   adb shell 'mkdir -p /data/vendor/mayaos/commands.d'
+#   adb push command.sh /data/vendor/mayaos/commands.d/001-command.sh
+#   adb shell 'chmod 700 /data/vendor/mayaos/commands.d/001-command.sh'
+#   adb shell 'setprop sys.mayaos.command_exec 1'
+
+set -eu
+
+BASE_DIR=/data/vendor/mayaos
+COMMAND_DIR="${BASE_DIR}/commands.d"
+LOG_DIR="${BASE_DIR}/logs"
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+LOG_FILE="${LOG_DIR}/command-exec-${RUN_ID}.log"
+
+mkdir -p "${COMMAND_DIR}" "${LOG_DIR}"
+chmod 700 "${BASE_DIR}" "${COMMAND_DIR}" "${LOG_DIR}"
+
+echo "mayaos-command-exec start ${RUN_ID}" >> "${LOG_FILE}"
+
+found=0
+for command_file in "${COMMAND_DIR}"/*.sh; do
+    [ -f "${command_file}" ] || continue
+    found=1
+    echo "==> ${command_file}" >> "${LOG_FILE}"
+    if [ ! -x "${command_file}" ]; then
+        echo "skip: not executable" >> "${LOG_FILE}"
+        continue
+    fi
+    /system/bin/sh "${command_file}" >> "${LOG_FILE}" 2>&1 || \
+        echo "exit=$?" >> "${LOG_FILE}"
+done
+
+if [ "${found}" = "0" ]; then
+    echo "no command scripts found in ${COMMAND_DIR}" >> "${LOG_FILE}"
+fi
+
+echo "mayaos-command-exec done ${RUN_ID}" >> "${LOG_FILE}"

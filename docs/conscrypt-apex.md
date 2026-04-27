@@ -9,7 +9,7 @@
 Up to Android 13, the trust store the Java security stack consulted at
 runtime was `/system/etc/security/cacerts/`. Drop a hashed cert file there
 and `KeyStore.getInstance("AndroidCAStore")` saw it. This is what the v1
-strategy in this pipeline does, via `customos_cf_x86_64_phone.mk`'s
+strategy in this pipeline does, via `mayaos_cf_s26ultra.mk`'s
 `PRODUCT_COPY_FILES`.
 
 In Android 14+, the **Conscrypt APEX module** ships with its own bundled

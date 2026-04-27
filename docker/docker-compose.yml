@@ -17,9 +17,9 @@ services:
       args:
         BUILD_UID: ${UID:-1000}
         BUILD_GID: ${GID:-1000}
-    image: customos/aosp-builder:android-16.0.0_r4
-    container_name: customos-builde
-    hostname: customos-builde
+    image: mayaos/aosp-builder:android-16.0.0_r4
+    container_name: mayaos-builder
+    hostname: mayaos-builder
     # AOSP needs lots of file descriptors and inotify watches.
     ulimits:
       nofile:
@@ -31,6 +31,7 @@ services:
       - ../device-tree:/srv/devicetree:ro
       - ../ca:/srv/cacerts:ro
       - ../manifests:/srv/local_manifests:ro
+      - ../mayaos.yaml:/srv/config/mayaos.yaml:ro
       - aosp_src:/srv/src
       - aosp_ccache:/srv/ccache
       - aosp_out:/srv/out
@@ -38,11 +39,11 @@ services:
       - aosp_logs:/srv/logs
     environment:
       AOSP_BRANCH: android-16.0.0_r4
-      LUNCH_TARGET: customos_cf_x86_64_phone-userdebug
+      LUNCH_TARGET: mayaos_cf_s26ultra-trunk_staging-userdebug
       USE_CCACHE: "1"
       CCACHE_MAX_SIZE: 100G
       # Override at run time:
-      #   docker compose run -e PARALLEL_JOBS=24 --rm builde
+      #   docker compose run -e PARALLEL_JOBS=24 --rm builder
       PARALLEL_JOBS: ""
     # Logs to stdout so 'docker compose logs -f builder' works as expected.
     tty: true

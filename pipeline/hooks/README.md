@@ -8,7 +8,7 @@ path inside the container.
 |---|---|---|
 | 1 | `before-sync.sh` | No-op. Override to mutate the manifest, set up extra git mirrors, etc. |
 | 2 | &mdash; | `repo init` + `repo sync` (built-in to `init.sh`) |
-| 3 | `after-sync.sh` | **Copies our device tree into `device/customos/` and our CA certs into `device/customos/customphone/security/cacerts/`.** This is the main customization seam. |
+| 3 | `after-sync.sh` | **Copies our device tree into `device/mayaos/` and our CA certs into `device/mayaos/galaxy-s26-ultra/security/cacerts/`.** This is the main customization seam. |
 | 4 | `before-build.sh` | No-op. Override to apply patches, run `prebuilts/python` setup, etc. |
 | 5 | &mdash; | `lunch ${LUNCH_TARGET} && m -j${JOBS}` (built-in) |
 | 6 | `after-build.sh` | Bundles `cvd-host_package.tar.gz` and `*.img` into `${OUT_DIR}/`. |

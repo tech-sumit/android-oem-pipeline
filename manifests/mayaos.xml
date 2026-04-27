@@ -6,9 +6,9 @@
   `repo sync`, so any extra projects we want pulled into the AOSP source tree
   show up alongside the official manifest.
 
-  As of v0, our device tree is splice-copied by hooks/after-sync.sh from the
+  As of v0, our device tree is splice-copied by the after sync hook from the
   bind-mounted /srv/devicetree (host => container), NOT pulled by repo. That
-  means we don't actually need any <project/> entries here yet -- but we keep
+  means we don't actually need any <project/> entries here yet, but we keep
   this file so the override mechanism is documented and ready.
 
   When/if we move our device tree into its own git repo (recommended once
@@ -20,8 +20,8 @@
             fetch="https://github.com/tech-sumit/"
             review="https://github.com/tech-sumit/" />
 
-    <project name="android_device_customos_customphone"
-             path="device/customos/customphone"
+    <project name="android_device_mayaos_galaxy_s26_ultra"
+             path="device/mayaos/galaxy-s26-ultra"
              remote="techsumit"
              revision="main" />
     -->

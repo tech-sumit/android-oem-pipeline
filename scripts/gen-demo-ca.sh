@@ -12,13 +12,13 @@ set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${1:-${REPO_ROOT}/ca}"
-DEVICE_CACERTS="${REPO_ROOT}/device-tree/customos/customphone/security/cacerts"
+DEVICE_CACERTS="${REPO_ROOT}/device-tree/mayaos/galaxy-s26-ultra/security/cacerts"
 
 mkdir -p "$OUT_DIR" "$DEVICE_CACERTS"
 cd "$OUT_DIR"
 
-KEY="customos-root-ca.key"
-PEM="customos-root-ca.pem"
+KEY="mayaos-root-ca.key"
+PEM="mayaos-root-ca.pem"
 
 if [[ -f "$PEM" ]]; then
     echo "[gen-demo-ca] $OUT_DIR/$PEM already exists; not regenerating. Delete it first to force a new CA." >&2
@@ -29,7 +29,7 @@ echo "[gen-demo-ca] generating 4096-bit RSA root CA, validity 10 years"
 openssl req -x509 -newkey rsa:4096 -nodes -days 3650 \
     -keyout "$KEY" \
     -out "$PEM" \
-    -subj '/C=IN/O=CustomOS/OU=Engineering/CN=CustomOS Root CA' 2>&1 | tail -5
+    -subj '/C=IN/O=MayaOS/OU=Engineering/CN=MayaOS Root CA' 2>&1 | tail -5
 
 echo
 echo "--- cert info ---"

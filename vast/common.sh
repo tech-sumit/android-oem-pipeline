@@ -46,7 +46,7 @@ ensure_vastai_auth() {
     fi
 
     die "no Vast.ai credentials found. Either:
-       - drop your key into ${KEY_FILE} and chmod 600, o
+       - drop your key into ${KEY_FILE} and chmod 600, or
        - run: vastai set api-key <YOUR_KEY>"
 }
 
