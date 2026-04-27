@@ -36,24 +36,32 @@ aosp:
 # lives at device-tree/customos/<id>/customos_cf_<short>.mk.
 # ---------------------------------------------------------------------------
 profiles:
-  - id: galaxy-s24-ultra
+  - id: galaxy-s25-ultra
     enabled: true
-    lunch_target: customos_cf_s24ultra-userdebug
-    device_tree: device-tree/customos/galaxy-s24-ultra
-    product_makefile: customos_cf_s24ultra.mk
+    lunch_target: customos_cf_s25ultra-userdebug
+    device_tree: device-tree/customos/galaxy-s25-ultra
+    product_makefile: customos_cf_s25ultra.mk
 
     # Branding spoof. Every key here flows into PRODUCT_PROPERTY_OVERRIDES /
     # build.prop via the matching .mk. The pipeline's parity check (lint
     # workflow + before-build hook) asserts the .mk values match these.
+    #
+    # Note: we build on AOSP 16 (android-16.0.0_r4) but advertise Android 15 /
+    # One UI 7 here to byte-match what a real S25 Ultra reports in the wild.
+    # See docs/architecture.md "Why Android 15 props on an Android 16 base".
     spoof:
+      marketing_name: Samsung Galaxy S25 Ultra
       brand: samsung
       manufacturer: samsung
-      model: SM-S928B
+      model: SM-S938B
       product: e3qxxx
       device: e3q
+      codename: e3q
       name: e3qxxx
       build_id: AP3A.240905.015.A2
-      build_fingerprint: "samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys"
+      build_fingerprint: "samsung/e3qxxx/e3q:15/AP3A.240905.015.A2/S938BXXU1AYA1:user/release-keys"
+      android_version_advertised: "15"
+      security_patch_advertised: "2025-01-01"
 
     display:
       width_px: 1440

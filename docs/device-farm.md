@@ -4,7 +4,7 @@
 
 ## What is the device farm?
 
-A cloud-hosted, GPU-accelerated fleet of Android emulators that present themselves to apps under test as **real, named devices** (Samsung Galaxy S24 Ultra, Pixel 8 Pro, etc.). External developers point their CI at the farm and run UI tests against an emulator that, from the app's perspective, has the brand, model, build fingerprint, screen geometry, sensors, and feature flags of the device they care about.
+A cloud-hosted, GPU-accelerated fleet of Android emulators that present themselves to apps under test as **real, named devices** (Samsung Galaxy S25 Ultra, Pixel 8 Pro, etc.). External developers point their CI at the farm and run UI tests against an emulator that, from the app's perspective, has the brand, model, build fingerprint, screen geometry, sensors, and feature flags of the device they care about.
 
 Three things together make this possible:
 
@@ -33,9 +33,9 @@ flowchart LR
         Orch --> GPU2
 
         subgraph EmulPodA[GPU host A pods]
-            E1[s24ultra emul 1]
-            E2[s24ultra emul 2]
-            EN[s24ultra emul N]
+            E1[s25ultra emul 1]
+            E2[s25ultra emul 2]
+            EN[s25ultra emul N]
         end
         GPU1 --- EmulPodA
 
@@ -113,7 +113,7 @@ flowchart LR
 
 Pod env:
 
-- `PROFILE_ID=galaxy-s24-ultra` &mdash; init container reads this and pulls the matching `img.zip` from R2.
+- `PROFILE_ID=galaxy-s25-ultra` &mdash; init container reads this and pulls the matching `img.zip` from R2.
 - `MITM_MODE=transparent` &mdash; mitmproxy started before launch_cvd; iptables routes egress through it.
 - `ADB_PORT=5555` exposed via a `Service`; tests connect with `adb connect <pod-fqdn>:5555`.
 
@@ -147,7 +147,7 @@ The only thing the runner sees is an Android device that happens to be on TCP/IP
 
 ## What v1 (this repo) ships
 
-- One enabled profile: `**galaxy-s24-ultra`** (Samsung Galaxy S24 Ultra, SM-S928B, fingerprint `samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU3AXJ4:user/release-keys`).
+- One enabled profile: `**galaxy-s25-ultra`** (Samsung Galaxy S25 Ultra, SM-S938B, fingerprint `samsung/e3qxxx/e3q:15/AP3A.240905.015.A2/S938BXXU1AYA1:user/release-keys`; advertises Android 15 / One UI 7 from an AOSP 16 base &mdash; see `architecture.md` for why).
 - One disabled profile scaffolded: `pixel-8-pro`. Set `enabled: true` in `customos.yaml` once its `.mk` is written.
 - Custom CA injection (system store; APEX is v2).
 - R2 + GH Release artifact distribution.

@@ -56,7 +56,7 @@ JOBS="$(resolve_jobs)"
 #   1. PROFILES env var (space- or comma-separated profile IDs).
 #   2. profiles[] entries with enabled: true in customos.yaml.
 #   3. LUNCH_TARGET env var (single-profile legacy path).
-#   4. Hard-coded fallback: customos_cf_s24ultra-userdebug.
+#   4. Hard-coded fallback: customos_cf_s25ultra-userdebug.
 declare -a PROFILE_IDS
 declare -a LUNCH_TARGETS
 
@@ -78,7 +78,7 @@ elif config_present; then
 fi
 
 if [[ ${#PROFILE_IDS[@]} -eq 0 ]]; then
-    legacy_lunch="${LUNCH_TARGET:-customos_cf_s24ultra-userdebug}"
+    legacy_lunch="${LUNCH_TARGET:-customos_cf_s25ultra-userdebug}"
     legacy_id="${legacy_lunch%-*}"
     log_warn "no enabled profiles in config; using legacy single-profile" \
              "path: ${legacy_lunch}"
