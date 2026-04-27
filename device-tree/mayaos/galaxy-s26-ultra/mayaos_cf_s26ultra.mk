@@ -17,6 +17,7 @@
 
 # Inherit AOSP Cuttlefish phone target (provides BoardConfig, partitions,
 # vendor, kernel, gfxstream-capable GPU stack for vsoc_x86_64).
+MAYAOS_DEVICE_PATH := device/mayaos/galaxy-s26-ultra
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/phone/aosp_cf.mk)
 
 LOCAL_PATH := $(call my-dir)
@@ -147,15 +148,15 @@ PRODUCT_PROPERTY_OVERRIDES += \
 # generated permissions file naming every feature the real S26 Ultra reports.
 
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/sku/galaxy-s26-ultra-features.xml:system/etc/permissions/mayaos_galaxy-s26-ultra-features.xml
+    $(MAYAOS_DEVICE_PATH)/sku/galaxy-s26-ultra-features.xml:system/etc/permissions/mayaos_galaxy-s26-ultra-features.xml
 
 # ---- MayaOS command execution service ---------------------------------------
 # Keep the image free of OEM bloatware. The only MayaOS payload is a root-owned
 # vendor service that executes operator-provided scripts from /data/vendor/mayaos.
 
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec \
-    $(LOCAL_PATH)/vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init/mayaos-command-exec.rc
+    $(MAYAOS_DEVICE_PATH)/vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec \
+    $(MAYAOS_DEVICE_PATH)/vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init/mayaos-command-exec.rc
 
 # ---- Custom root CA certificates -------------------------------------------
 # Bake every <hash>.0 file under security/cacerts/ into
@@ -168,7 +169,7 @@ PRODUCT_COPY_FILES += \
 # secondary source but apps that load Conscrypt directly may not pick them up.
 # See docs/conscrypt-apex.md for the v2 plan to rebuild the APEX with our CAs.
 
-MAYAOS_CA_FILES := $(wildcard $(LOCAL_PATH)/security/cacerts/*.0)
+MAYAOS_CA_FILES := $(wildcard $(MAYAOS_DEVICE_PATH)/security/cacerts/*.0)
 PRODUCT_COPY_FILES += $(foreach f,$(MAYAOS_CA_FILES),\
     $(f):system/etc/security/cacerts/$(notdir $(f)))
 

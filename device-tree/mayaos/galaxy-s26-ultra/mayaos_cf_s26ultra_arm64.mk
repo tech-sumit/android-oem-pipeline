@@ -9,6 +9,7 @@
 # Output:  out/target/product/vsoc_arm64/
 #
 
+MAYAOS_DEVICE_PATH := device/mayaos/galaxy-s26-ultra
 $(call inherit-product, device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk)
 
 LOCAL_PATH := $(call my-dir)
@@ -106,13 +107,13 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.config.combined_signal=true
 
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/sku/galaxy-s26-ultra-features.xml:system/etc/permissions/mayaos_galaxy-s26-ultra-features.xml
+    $(MAYAOS_DEVICE_PATH)/sku/galaxy-s26-ultra-features.xml:system/etc/permissions/mayaos_galaxy-s26-ultra-features.xml
 
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec \
-    $(LOCAL_PATH)/vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init/mayaos-command-exec.rc
+    $(MAYAOS_DEVICE_PATH)/vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec \
+    $(MAYAOS_DEVICE_PATH)/vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init/mayaos-command-exec.rc
 
-MAYAOS_CA_FILES := $(wildcard $(LOCAL_PATH)/security/cacerts/*.0)
+MAYAOS_CA_FILES := $(wildcard $(MAYAOS_DEVICE_PATH)/security/cacerts/*.0)
 PRODUCT_COPY_FILES += $(foreach f,$(MAYAOS_CA_FILES),\
     $(f):system/etc/security/cacerts/$(notdir $(f)))
 
