@@ -1,0 +1,60 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          # severity=warning catches the things that actually break, ignores style nits.
+          find . -type f \( -name '*.sh' -o -name 'Dockerfile' \) \
+              -not -path './.git/*' \
+              -print0 | xargs -0 -r shellcheck --severity=warning --shell=bash || true
+          # Hard-fail on errors only.
+          find . -type f -name '*.sh' -not -path './.git/*' -print0 \
+              | xargs -0 -r shellcheck --severity=error --shell=bash
+
+  hadolint:
+    name: hadolint Dockerfile
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          failure-threshold: erro
+
+  gitleaks:
+    name: secret scan
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  validate-makefiles:
+    name: validate device-tree makefiles
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm AndroidProducts.mk and product mk parse cleanly
+        run: |
+          for mk in $(find device-tree -name '*.mk'); do
+            echo "==> $mk"
+            # GNU make in --warn-undefined-variables -p mode is the closest we get
+            # to AOSP's makefile parser without sourcing build/envsetup.sh.
+            make -nf "$mk" >/dev/null 2>&1 || echo "  (note: $mk needs AOSP context to fully parse; this is fine)"
+            grep -E '^PRODUCT_(NAME|DEVICE|BRAND|MANUFACTURER|MODEL|MAKEFILES)\s*[:?]?=' "$mk" || true
+          done

@@ -1,0 +1,98 @@
+name: release
+
+# Tag-driven AOSP build. Tagging this repo as e.g. v1.0.0-customos triggers a
+# Vast.ai build of the corresponding AOSP-source tree using this pipeline at
+# the tag.
+#
+# This workflow only TRIGGERS the build by provisioning Vast.ai and kicking
+# the remote container; the actual ~5h build runs on the rented instance.
+# That avoids paying for GitHub Actions runner minutes (which would be ~$0.50
+# vs ~$2.50 on Vast.ai for a much faster instance, but capped to 6h per job
+# and 14 GB RAM -- not enough for AOSP).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      aosp_branch:
+        description: 'AOSP branch/tag to build'
+        default: 'android-16.0.0_r4'
+        required: true
+      lunch_target:
+        description: 'Lunch combo'
+        default: 'customos_cf_x86_64_phone-userdebug'
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-on-vast:
+    name: AOSP build on Vast.ai
+    runs-on: ubuntu-22.04
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install vastai CLI + ssh tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pipx rsync openssh-client
+          pipx install vastai
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Restore SSH key from secrets
+        env:
+          VAST_SSH_KEY: ${{ secrets.VAST_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VAST_SSH_KEY" > ~/.ssh/id_ed25519_vastai
+          chmod 600 ~/.ssh/id_ed25519_vastai
+
+      - name: Restore Vast.ai API key from secrets
+        env:
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+        run: |
+          printf '%s' "$VAST_API_KEY" > vast_api_key
+          chmod 600 vast_api_key
+
+      - name: Search + provision Vast.ai instance
+        id: provision
+        run: |
+          OFFER=$(./vast/search.sh | awk 'NR>2 && $1 ~ /^[0-9]+$/ {print $1; exit}')
+          [[ -n "$OFFER" ]] || { echo "::error::no offer matched"; exit 1; }
+          echo "offer_id=$OFFER" >> "$GITHUB_OUTPUT"
+          ./vast/provision.sh "$OFFER"
+          echo "instance_id=$(cat vast/.instance_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Sync source + kick build
+        env:
+          AOSP_BRANCH: ${{ github.event.inputs.aosp_branch || 'android-16.0.0_r4' }}
+          LUNCH_TARGET: ${{ github.event.inputs.lunch_target || 'customos_cf_x86_64_phone-userdebug' }}
+        run: |
+          ./vast/sync-source.sh
+          ./vast/kick-build.sh
+
+      - name: Fetch artifacts
+        run: ./vast/fetch-artifacts.sh
+
+      - name: Upload artifacts to GH Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/**/*.zip
+            out/**/cvd-host_package.tar.gz
+            out/**/SHA256SUMS
+            out/**/build-fingerprint.txt
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Always destroy Vast.ai instance
+        if: always() && steps.provision.outputs.instance_id != ''
+        run: ./vast/destroy.sh --destroy
