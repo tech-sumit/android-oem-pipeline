@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    CustomOS device-farm feature manifest for the Samsung Galaxy S24 Ultra
+    spoof profile. PackageManager.hasSystemFeature(name) returns true iff a
+    <feature name="..."/> entry is present here OR in another permissions
+    file shipped under /system/etc/permissions/ or /vendor/etc/permissions/.
+
+    This file is the single source of "what hardware does the device claim to
+    have". Apps that gate behavior on hasSystemFeature -- camera, NFC,
+    fingerprint, telephony, sensors -- pivot off these entries.
+
+    The list mirrors customos.yaml profiles[id=galaxy-s24-ultra].hardware.features.
+    Keep them in sync; the lint workflow's validate-config job checks parity.
+-->
+<permissions>
+    <feature name="android.hardware.camera" />
+    <feature name="android.hardware.camera.front" />
+    <feature name="android.hardware.camera.flash" />
+    <feature name="android.hardware.camera.autofocus" />
+    <feature name="android.hardware.camera.any" />
+
+    <feature name="android.hardware.fingerprint" />
+    <feature name="android.hardware.nfc" />
+    <feature name="android.hardware.nfc.hce" />
+
+    <feature name="android.hardware.telephony" />
+    <feature name="android.hardware.telephony.gsm" />
+
+    <feature name="android.hardware.sensor.accelerometer" />
+    <feature name="android.hardware.sensor.gyroscope" />
+    <feature name="android.hardware.sensor.proximity" />
+    <feature name="android.hardware.sensor.compass" />
+    <feature name="android.hardware.sensor.light" />
+    <feature name="android.hardware.sensor.barometer" />
+    <feature name="android.hardware.sensor.stepcounter" />
+    <feature name="android.hardware.sensor.stepdetector" />
+
+    <feature name="android.hardware.wifi" />
+    <feature name="android.hardware.wifi.direct" />
+    <feature name="android.hardware.bluetooth" />
+    <feature name="android.hardware.bluetooth_le" />
+
+    <feature name="android.hardware.location" />
+    <feature name="android.hardware.location.gps" />
+    <feature name="android.hardware.location.network" />
+
+    <feature name="android.hardware.usb.host" />
+    <feature name="android.hardware.usb.accessory" />
+
+    <feature name="android.hardware.touchscreen" />
+    <feature name="android.hardware.touchscreen.multitouch" />
+    <feature name="android.hardware.touchscreen.multitouch.distinct" />
+    <feature name="android.hardware.touchscreen.multitouch.jazzhand" />
+    <feature name="android.hardware.faketouch" />
+
+    <feature name="android.hardware.screen.portrait" />
+    <feature name="android.hardware.screen.landscape" />
+
+    <feature name="android.hardware.vulkan.level" version="1" />
+    <feature name="android.hardware.vulkan.version" version="4198400" />
+    <feature name="android.hardware.vulkan.compute" version="0" />
+
+    <feature name="android.software.app_widgets" />
+    <feature name="android.software.connectionservice" />
+    <feature name="android.software.input_methods" />
+    <feature name="android.software.print" />
+    <feature name="android.software.midi" />
+    <feature name="android.software.cant_save_state" />
+    <feature name="android.software.webview" />
+    <feature name="android.software.activities_on_secondary_displays" />
+</permissions>

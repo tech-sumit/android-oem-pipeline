@@ -34,7 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
         bc bison bsdmainutils build-essential ca-certificates ccache cgpt clang \
         cmake cpio cron curl flex g++-multilib gcc-multilib git git-lfs gnupg \
-        gperf imagemagick kmod \
+        gperf imagemagick jq kmod \
         lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool \
         libelf-dev libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev \
         libxml2 libxml2-utils lsof lzop \
@@ -46,6 +46,17 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
         yasm zip zlib1g-dev zstd \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
+
+# ---------------------------------------------------------------------------
+# yq (mikefarah/yq v4). The pipeline reads /srv/config/customos.yaml at boot
+# to decide branch / lunch target / profiles. Pinned to a known release so
+# the build is reproducible even if mikefarah cuts a new tag mid-run.
+# ---------------------------------------------------------------------------
+ARG YQ_VERSION=v4.44.3
+RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+        -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq \
+    && yq --version
 
 # Python 'python' shim (some older AOSP scripts still expect /usr/bin/python).
 RUN ln -sf /usr/bin/python3 /usr/bin/python
@@ -82,14 +93,16 @@ ENV SRC_DIR=/srv/src \
     LOGS_DIR=/srv/logs \
     LMANIFEST_DIR=/srv/local_manifests \
     DEVICETREE_DIR=/srv/devicetree \
-    CACERTS_DIR=/srv/cacerts
+    CACERTS_DIR=/srv/cacerts \
+    CONFIG_DIR=/srv/config \
+    CONFIG_FILE=/srv/config/customos.yaml
 
 RUN install -d -o build -g build \
         "$SRC_DIR" "$CCACHE_DIR" "$OUT_DIR" "$KEYS_DIR" "$LOGS_DIR" \
-        "$LMANIFEST_DIR" "$DEVICETREE_DIR" "$CACERTS_DIR"
+        "$LMANIFEST_DIR" "$DEVICETREE_DIR" "$CACERTS_DIR" "$CONFIG_DIR"
 
 VOLUME ["/srv/src", "/srv/ccache", "/srv/out", "/srv/keys", "/srv/logs", \
-        "/srv/local_manifests", "/srv/devicetree", "/srv/cacerts"]
+        "/srv/local_manifests", "/srv/devicetree", "/srv/cacerts", "/srv/config"]
 
 # ---------------------------------------------------------------------------
 # Pipeline scripts. init.sh is the entrypoint; hooks/ are sourced at the

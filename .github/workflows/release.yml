@@ -1,56 +1,99 @@
 name: release
 
-# Tag-driven AOSP build. Tagging this repo as e.g. v1.0.0-customos triggers a
-# Vast.ai build of the corresponding AOSP-source tree using this pipeline at
-# the tag.
+# Post-merge-driven AOSP build for the CustomOS Device Farm. Fires on every
+# push to main (i.e. when a PR is merged) and on manual dispatch. The actual
+# ~5h AOSP build runs on a rented Vast.ai instance; this runner just orchestrates.
 #
-# This workflow only TRIGGERS the build by provisioning Vast.ai and kicking
-# the remote container; the actual ~5h build runs on the rented instance.
-# That avoids paying for GitHub Actions runner minutes (which would be ~$0.50
-# vs ~$2.50 on Vast.ai for a much faster instance, but capped to 6h per job
-# and 14 GB RAM -- not enough for AOSP).
+# Cost guard: Vast.ai builds are ~$2-3 each. Path filters skip docs-only
+# changes; the concurrency group prevents two builds from racing on the same
+# ref. The R2 upload is conditional on R2_* secrets being present.
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/workflows/lint.yml'
+      - 'LICENSE'
   workflow_dispatch:
     inputs:
       aosp_branch:
-        description: 'AOSP branch/tag to build'
-        default: 'android-16.0.0_r4'
-        required: true
-      lunch_target:
-        description: 'Lunch combo'
-        default: 'customos_cf_x86_64_phone-userdebug'
-        required: true
+        description: 'AOSP branch/tag (overrides customos.yaml aosp.branch)'
+        default: ''
+        required: false
+      profiles:
+        description: 'Comma-separated profile IDs (overrides yaml enabled flags)'
+        default: ''
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write   # for the GH Release in release-gh
+
 jobs:
+  # ===========================================================================
+  # Job 1: drive the AOSP build on a rented Vast.ai instance.
+  # ===========================================================================
   build-on-vast:
     name: AOSP build on Vast.ai
     runs-on: ubuntu-22.04
-    timeout-minutes: 480
+    timeout-minutes: 600  # 10h headroom; cold AOSP 16 build is ~5-7h.
+    outputs:
+      instance_id: ${{ steps.provision.outputs.instance_id }}
+      image_version: ${{ steps.config.outputs.image_version }}
+      image_name: ${{ steps.config.outputs.image_name }}
+      profiles: ${{ steps.config.outputs.profiles }}
+      r2_bucket: ${{ steps.config.outputs.r2_bucket }}
+      r2_prefix: ${{ steps.config.outputs.r2_prefix }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install vastai CLI + ssh tooling
+      - name: Install yq, vastai CLI, ssh tooling
         run: |
+          sudo snap install yq || {
+              # snap can fail on the runner; fall back to the static binary.
+              sudo curl -fsSL \
+                  https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 \
+                  -o /usr/local/bin/yq
+              sudo chmod +x /usr/local/bin/yq
+          }
+          yq --version
           sudo apt-get update -qq
-          sudo apt-get install -y -qq pipx rsync openssh-client
+          sudo apt-get install -y -qq pipx rsync openssh-client jq
           pipx install vastai
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Restore SSH key from secrets
+      - name: Read customos.yaml -> job outputs
+        id: config
+        run: |
+          IMAGE_NAME=$(yq eval '.image.name' customos.yaml)
+          IMAGE_VERSION=$(yq eval '.image.version' customos.yaml)
+          PROFILES=$(yq eval '.profiles[] | select(.enabled == true) | .id' customos.yaml | tr '\n' ',' | sed 's/,$//')
+          R2_BUCKET=$(yq eval '.release.r2.bucket' customos.yaml)
+          R2_PREFIX=$(yq eval '.release.r2.prefix' customos.yaml)
+          {
+              echo "image_name=${IMAGE_NAME}"
+              echo "image_version=${IMAGE_VERSION}"
+              echo "profiles=${PROFILES}"
+              echo "r2_bucket=${R2_BUCKET}"
+              echo "r2_prefix=${R2_PREFIX}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved: image=${IMAGE_NAME} v${IMAGE_VERSION} profiles=[${PROFILES}]"
+
+      - name: Restore SSH keys from secrets
         env:
-          VAST_SSH_KEY: ${{ secrets.VAST_SSH_KEY }}
+          VAST_SSH_PRIVATE_KEY: ${{ secrets.VAST_SSH_PRIVATE_KEY }}
+          VAST_SSH_PUBLIC_KEY:  ${{ secrets.VAST_SSH_PUBLIC_KEY }}
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$VAST_SSH_KEY" > ~/.ssh/id_ed25519_vastai
+          printf '%s\n' "$VAST_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519_vastai
+          printf '%s\n' "$VAST_SSH_PUBLIC_KEY"  > ~/.ssh/id_ed25519_vastai.pub
           chmod 600 ~/.ssh/id_ed25519_vastai
+          chmod 644 ~/.ssh/id_ed25519_vastai.pub
 
       - name: Restore Vast.ai API key from secrets
         env:
@@ -63,15 +106,17 @@ jobs:
         id: provision
         run: |
           OFFER=$(./vast/search.sh | awk 'NR>2 && $1 ~ /^[0-9]+$/ {print $1; exit}')
-          [[ -n "$OFFER" ]] || { echo "::error::no offer matched"; exit 1; }
-          echo "offer_id=$OFFER" >> "$GITHUB_OUTPUT"
+          [[ -n "$OFFER" ]] || { echo "::error::no Vast.ai offer matched the cpu_min/ram/disk/dph_max filters; tighten or relax customos.yaml.vast"; exit 1; }
+          echo "Selected offer: ${OFFER}"
           ./vast/provision.sh "$OFFER"
-          echo "instance_id=$(cat vast/.instance_id)" >> "$GITHUB_OUTPUT"
+          INSTANCE_ID=$(cat vast/.instance_id)
+          echo "instance_id=${INSTANCE_ID}" >> "$GITHUB_OUTPUT"
+          echo "Provisioned Vast.ai instance ${INSTANCE_ID}"
 
       - name: Sync source + kick build
         env:
-          AOSP_BRANCH: ${{ github.event.inputs.aosp_branch || 'android-16.0.0_r4' }}
-          LUNCH_TARGET: ${{ github.event.inputs.lunch_target || 'customos_cf_x86_64_phone-userdebug' }}
+          AOSP_BRANCH: ${{ github.event.inputs.aosp_branch }}
+          PROFILES:    ${{ github.event.inputs.profiles }}
         run: |
           ./vast/sync-source.sh
           ./vast/kick-build.sh
@@ -79,20 +124,314 @@ jobs:
       - name: Fetch artifacts
         run: ./vast/fetch-artifacts.sh
 
-      - name: Upload artifacts to GH Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifacts as workflow-scoped GH artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            out/**/*.zip
-            out/**/cvd-host_package.tar.gz
-            out/**/SHA256SUMS
-            out/**/build-fingerprint.txt
-          draft: true
+          name: customos-build-${{ github.sha }}
+          path: out/**
+          if-no-files-found: error
+          retention-days: 14
+
+  # ===========================================================================
+  # Job 2 (optional, best-effort): boot one of the produced images for 30s
+  # under swiftshader and assert ro.product.brand == samsung. continue-on-error
+  # because the GH-hosted runner may not have nested KVM.
+  # ===========================================================================
+  smoke-boot:
+    name: smoke boot (swiftshader, 30s)
+    needs: build-on-vast
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: customos-build-${{ github.sha }}
+          path: out/
+
+      - name: Install cuttlefish-base + adb
+        run: |
+          # Pull the prebuilt deb from google/android-cuttlefish releases.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq adb android-tools-adb || true
+          curl -fsSL https://github.com/google/android-cuttlefish/releases/latest/download/cuttlefish-base_amd64.deb \
+              -o /tmp/cuttlefish-base.deb || true
+          sudo apt-get install -y -qq /tmp/cuttlefish-base.deb || \
+              echo "::warning::cuttlefish-base install failed; the runner may not support it -- continuing"
+
+      - name: Boot the first profile under swiftshader_indirect, getprop, kill
+        run: |
+          set -Eeuo pipefail
+          # First profile dir under out/.
+          profile_dir=$(find out -mindepth 1 -maxdepth 1 -type d | head -n1)
+          [[ -n "$profile_dir" ]] || { echo "::warning::no profile output found"; exit 0; }
+          profile_id=$(basename "$profile_dir")
+          echo "Smoke-booting profile: ${profile_id}"
+
+          mkdir cf && cd cf
+          tar xf "../${profile_dir}/cvd-host_package.tar.gz" || \
+              { echo "::warning::cvd-host_package.tar.gz missing; skipping smoke boot"; exit 0; }
+          unzip -q "../${profile_dir}"/*-img-*.zip || \
+              { echo "::warning::image zip extract failed"; exit 0; }
+
+          export HOME=$PWD
+          # 30s ceiling to keep CI cheap. Background launch_cvd, sleep, getprop.
+          ./bin/launch_cvd \
+              --num_instances=1 \
+              --gpu_mode=swiftshader_indirect \
+              --report_anonymous_usage_stats=n \
+              --daemon \
+              || { echo "::warning::launch_cvd failed (likely no nested KVM on runner); skipping"; exit 0; }
+
+          # Wait up to 30s for adb to come up.
+          for i in $(seq 1 30); do
+              if adb shell getprop ro.product.brand 2>/dev/null | grep -q samsung; then
+                  brand=$(adb shell getprop ro.product.brand)
+                  model=$(adb shell getprop ro.product.model)
+                  fp=$(adb shell getprop ro.build.fingerprint)
+                  echo "::notice::smoke-boot OK -- brand=${brand} model=${model}"
+                  echo "::notice::fingerprint: ${fp}"
+                  ./bin/stop_cvd || true
+                  exit 0
+              fi
+              sleep 1
+          done
+          ./bin/stop_cvd || true
+          echo "::warning::adb getprop did not return 'samsung' within 30s; recording soft failure"
+          exit 1
+
+  # ===========================================================================
+  # Job 3 (conditional): upload artifacts to Cloudflare R2.
+  # Skipped if R2_* secrets are missing -- the GH Release fallback in job 4
+  # will attach binaries directly instead.
+  # ===========================================================================
+  upload-r2:
+    name: upload to R2
+    needs: build-on-vast
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    outputs:
+      uploaded:    ${{ steps.r2.outputs.uploaded }}
+      base_url:    ${{ steps.r2.outputs.base_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: customos-build-${{ github.sha }}
+          path: out/
+
+      - name: Detect R2 secrets
+        id: detect
+        env:
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET:            ${{ secrets.R2_BUCKET }}
+        run: |
+          if [[ -z "$R2_ACCOUNT_ID" || -z "$R2_ACCESS_KEY_ID" || \
+                -z "$R2_SECRET_ACCESS_KEY" || -z "$R2_BUCKET" ]]; then
+              echo "::warning::R2 secrets not all set; falling back to GH Release-only mode."
+              echo "  Required (set via 'gh secret set'): R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET."
+              echo "have_r2=false" >> "$GITHUB_OUTPUT"
+          else
+              echo "have_r2=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload via aws s3 (R2-compatible)
+        id: r2
+        if: steps.detect.outputs.have_r2 == 'true'
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION:    auto
+          R2_ACCOUNT_ID:         ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET:             ${{ secrets.R2_BUCKET }}
+          IMAGE_VERSION:         ${{ needs.build-on-vast.outputs.image_version }}
+          R2_PREFIX:             ${{ needs.build-on-vast.outputs.r2_prefix }}
+        run: |
+          set -Eeuo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          GITSHA="${GITHUB_SHA::12}"
+          BASE_KEY="${R2_PREFIX}${IMAGE_VERSION}-${GITSHA}"
+          echo "Endpoint: ${ENDPOINT}"
+          echo "Bucket:   ${R2_BUCKET}"
+          echo "Base key: ${BASE_KEY}"
+
+          for profile_dir in out/*/; do
+              [[ -d "$profile_dir" ]] || continue
+              profile_id=$(basename "$profile_dir")
+              dest="s3://${R2_BUCKET}/${BASE_KEY}/${profile_id}/"
+              echo "==> ${profile_id} -> ${dest}"
+              aws --endpoint-url "$ENDPOINT" s3 cp \
+                  --recursive "$profile_dir" "$dest"
+          done
+
+          BASE_URL="${ENDPOINT}/${R2_BUCKET}/${BASE_KEY}"
+          {
+              echo "uploaded=true"
+              echo "base_url=${BASE_URL}"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::R2 upload complete -> ${BASE_URL}"
+
+      - name: Skipped (no R2 secrets)
+        if: steps.detect.outputs.have_r2 != 'true'
+        run: |
+          echo "uploaded=false" >> "$GITHUB_OUTPUT"
+          echo "base_url=" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
+  # Job 4: cut a GH Release. Always runs (R2 is nice-to-have).
+  # If R2 succeeded -> body lists R2 URLs.
+  # If R2 was skipped/failed -> attach binaries directly to the release.
+  # ===========================================================================
+  release-gh:
+    name: cut GH Release
+    needs: [build-on-vast, upload-r2]
+    if: always() && needs.build-on-vast.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: customos-build-${{ github.sha }}
+          path: out/
+
+      - name: Compose release body
+        id: body
+        env:
+          IMAGE_VERSION: ${{ needs.build-on-vast.outputs.image_version }}
+          R2_UPLOADED:   ${{ needs.upload-r2.outputs.uploaded }}
+          R2_BASE_URL:   ${{ needs.upload-r2.outputs.base_url }}
+        run: |
+          set -Eeuo pipefail
+          GITSHA="${GITHUB_SHA::12}"
+          {
+              echo "## CustomOS Device Farm v${IMAGE_VERSION} (${GITSHA})"
+              echo
+              echo "Built from \`${GITHUB_REF}\` @ \`${GITHUB_SHA}\`."
+              echo
+              echo "### Profiles"
+              echo
+              echo "| Profile | Lunch target | Build fingerprint | Image |"
+              echo "|---|---|---|---|"
+              for profile_dir in out/*/; do
+                  [[ -d "$profile_dir" ]] || continue
+                  profile_id=$(basename "$profile_dir")
+                  fp=$(cat "${profile_dir}/build-fingerprint.txt" 2>/dev/null || echo "(missing)")
+                  zip_name=$(ls "${profile_dir}"/*-img-*.zip 2>/dev/null | head -n1 | xargs -r basename)
+                  zip_link="${zip_name}"
+                  if [[ "$R2_UPLOADED" == "true" && -n "$R2_BASE_URL" && -n "$zip_name" ]]; then
+                      zip_link="[${zip_name}](${R2_BASE_URL}/${profile_id}/${zip_name})"
+                  fi
+                  lunch=$(grep -E '^lunch_target=' "${profile_dir}/profile.txt" 2>/dev/null | cut -d= -f2)
+                  echo "| ${profile_id} | ${lunch:-?} | \`${fp}\` | ${zip_link} |"
+              done
+              echo
+              if [[ "$R2_UPLOADED" == "true" ]]; then
+                  echo "### Artifacts"
+                  echo "Hosted on Cloudflare R2: \`${R2_BASE_URL}\`"
+                  echo
+                  echo "Per-profile artifacts include: \`<profile-id>-img-*.zip\`, \`cvd-host_package.tar.gz\`, \`build-fingerprint.txt\`, \`SHA256SUMS\`."
+              else
+                  echo "### Artifacts"
+                  echo "_R2 upload was skipped; binaries are attached directly to this release._"
+                  echo
+                  echo "To enable R2 in future runs:"
+                  echo
+                  echo '```bash'
+                  echo "gh secret set R2_ACCOUNT_ID --repo \"\$REPO\""
+                  echo "gh secret set R2_ACCESS_KEY_ID --repo \"\$REPO\""
+                  echo "gh secret set R2_SECRET_ACCESS_KEY --repo \"\$REPO\""
+                  echo "gh secret set R2_BUCKET --repo \"\$REPO\""
+                  echo '```'
+              fi
+              echo
+              echo "### SHA256SUMS"
+              echo
+              echo '```'
+              for profile_dir in out/*/; do
+                  [[ -f "${profile_dir}/SHA256SUMS" ]] || continue
+                  echo "# $(basename "$profile_dir")"
+                  cat "${profile_dir}/SHA256SUMS"
+                  echo
+              done
+              echo '```'
+          } > release-body.md
+          echo "body_path=release-body.md" >> "$GITHUB_OUTPUT"
+          echo "tag=v${IMAGE_VERSION}-${GITSHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Stage attachments (R2 fallback only)
+        id: attach
+        env:
+          R2_UPLOADED: ${{ needs.upload-r2.outputs.uploaded }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$R2_UPLOADED" == "true" ]]; then
+              echo "files=" >> "$GITHUB_OUTPUT"
+              echo "R2 succeeded; not attaching binaries directly."
+              exit 0
+          fi
+          # Flatten artifacts so action-gh-release can glob them.
+          mkdir -p release-attach
+          for profile_dir in out/*/; do
+              [[ -d "$profile_dir" ]] || continue
+              profile_id=$(basename "$profile_dir")
+              for f in "$profile_dir"*; do
+                  [[ -f "$f" ]] || continue
+                  cp "$f" "release-attach/${profile_id}--$(basename "$f")"
+              done
+          done
+          echo "files=release-attach/*" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name:    ${{ steps.body.outputs.tag }}
+          name:        ${{ steps.body.outputs.tag }}
+          body_path:   ${{ steps.body.outputs.body_path }}
+          draft:       true
+          prerelease:  false
           generate_release_notes: true
+          files:       ${{ steps.attach.outputs.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Always destroy Vast.ai instance
-        if: always() && steps.provision.outputs.instance_id != ''
-        run: ./vast/destroy.sh --destroy
+  # ===========================================================================
+  # Job 5: ALWAYS destroy the Vast.ai instance, even on cancel/failure.
+  # ===========================================================================
+  cleanup-vast:
+    name: destroy Vast.ai instance
+    needs: [build-on-vast, smoke-boot, upload-r2, release-gh]
+    if: always() && needs.build-on-vast.outputs.instance_id != ''
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install vastai CLI
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pipx
+          pipx install vastai
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Restore Vast.ai API key
+        env:
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+        run: |
+          printf '%s' "$VAST_API_KEY" > vast_api_key
+          chmod 600 vast_api_key
+
+      - name: Destroy instance
+        env:
+          INSTANCE_ID: ${{ needs.build-on-vast.outputs.instance_id }}
+        run: |
+          mkdir -p vast
+          echo "$INSTANCE_ID" > vast/.instance_id
+          ./vast/destroy.sh --destroy || \
+              echo "::warning::destroy failed; manually destroy ${INSTANCE_ID} via vastai CLI"
