@@ -103,12 +103,12 @@ PRODUCT_PROPERTY_OVERRIDES += \
     persist.radio.allow_pre_4g_call=1 \
     ro.config.combined_signal=true
 
-PRODUCT_COPY_FILES += \
-    device/mayaos/galaxy-s26-ultra/sku/galaxy-s26-ultra-features.xml:system/etc/permissions/mayaos_galaxy-s26-ultra-features.xml
-
-PRODUCT_COPY_FILES += \
-    device/mayaos/galaxy-s26-ultra/vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec \
-    device/mayaos/galaxy-s26-ultra/vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init/mayaos-command-exec.rc
+# MayaOS payload modules (defined in this directory's Android.bp).
+# Install paths are owned by Soong so PRODUCT_PACKAGES is the only opt-in.
+PRODUCT_PACKAGES += \
+    mayaos_galaxy-s26-ultra-features.xml \
+    mayaos-command-exec \
+    mayaos-command-exec.rc
 
 MAYAOS_CA_FILES := $(wildcard device/mayaos/galaxy-s26-ultra/security/cacerts/*.0)
 PRODUCT_COPY_FILES += $(foreach f,$(MAYAOS_CA_FILES),\

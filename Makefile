@@ -32,7 +32,7 @@ doctor: ## Check local tools and Vast.ai auth state
 validate: ## Run local syntax, XML, and MayaOS profile checks
 	@bash -n vast/*.sh pipeline/*.sh pipeline/hooks/*.sh scripts/*.sh \
 		device-tree/mayaos/galaxy-s26-ultra/vendor/bin/mayaos-command-exec
-	@python3 -c 'import sys, xml.etree.ElementTree as ET; from pathlib import Path; ET.parse("manifests/mayaos.xml"); ET.parse("device-tree/mayaos/galaxy-s26-ultra/sku/galaxy-s26-ultra-features.xml"); y=Path("mayaos.yaml").read_text(); x=Path("device-tree/mayaos/galaxy-s26-ultra/mayaos_cf_s26ultra.mk").read_text(); a=Path("device-tree/mayaos/galaxy-s26-ultra/mayaos_cf_s26ultra_arm64.mk").read_text(); p=Path("device-tree/mayaos/galaxy-s26-ultra/AndroidProducts.mk").read_text(); checks=[("intel profile","id: galaxy-s26-ultra-intel-gpu",y),("apple profile","id: galaxy-s26-ultra-apple-silicon",y),("x86 lunch yaml","lunch_target: mayaos_cf_s26ultra-trunk_staging-userdebug",y),("arm lunch yaml","lunch_target: mayaos_cf_s26ultra_arm64-trunk_staging-userdebug",y),("x86 lunch ap","mayaos_cf_s26ultra-trunk_staging-userdebug",p),("arm lunch ap","mayaos_cf_s26ultra_arm64-trunk_staging-userdebug",p),("x86 model","PRODUCT_MODEL        := SM-S948B",x),("arm model","PRODUCT_MODEL        := SM-S948B",a),("x86 command runner","vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec",x),("arm command runner","vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec",a)]; failed=[name for name,needle,hay in checks if needle not in hay]; (sys.exit("failed checks: "+", ".join(failed)) if failed else print("ok: MayaOS multi-target checks passed"))'
+	@python3 scripts/validate-mayaos.py
 
 status: ## Show local git state and active Vast instance
 	@git status --short

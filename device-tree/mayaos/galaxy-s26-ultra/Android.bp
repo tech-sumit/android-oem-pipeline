@@ -1,0 +1,29 @@
+// MayaOS Galaxy S26 Ultra device tree modules.
+//
+// Soong owns every MayaOS-added payload here so installation paths are
+// resolved relative to this directory. AOSP 16's fsgen rejects
+// PRODUCT_COPY_FILES sources that resolve outside the source root, so the
+// product makefile pulls these in via PRODUCT_PACKAGES instead.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+prebuilt_etc {
+    name: "mayaos_galaxy-s26-ultra-features.xml",
+    src: "sku/galaxy-s26-ultra-features.xml",
+    sub_dir: "permissions",
+}
+
+sh_binary {
+    name: "mayaos-command-exec",
+    src: "vendor/bin/mayaos-command-exec",
+    vendor: true,
+}
+
+prebuilt_etc {
+    name: "mayaos-command-exec.rc",
+    src: "vendor/etc/init/mayaos-command-exec.rc",
+    vendor: true,
+    sub_dir: "init",
+}

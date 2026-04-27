@@ -139,21 +139,26 @@ PRODUCT_PROPERTY_OVERRIDES += \
     persist.radio.allow_pre_4g_call=1 \
     ro.config.combined_signal=true
 
-# ---- Hardware features XML --------------------------------------------------
-# PackageManager.hasSystemFeature(...) reads from XML files in
-# /system/etc/permissions/ and /vendor/etc/permissions/. We ship a single
-# generated permissions file naming every feature the real S26 Ultra reports.
+# ---- MayaOS payload modules -------------------------------------------------
+# Everything MayaOS adds on top of upstream Cuttlefish is shipped through
+# Soong-defined modules in this directory's Android.bp:
+#
+#   mayaos_galaxy-s26-ultra-features.xml -> /system/etc/permissions/
+#       hasSystemFeature() XML naming every feature the real S26 Ultra reports
+#   mayaos-command-exec                  -> /vendor/bin/
+#       root-owned shell script that runs operator scripts from /data/vendor/mayaos
+#   mayaos-command-exec.rc               -> /vendor/etc/init/
+#       init service that triggers the executor on sys.mayaos.command_exec=1
+#
+# This is the standard AOSP integration point: install paths are owned by
+# Soong (so source files resolve relative to the device directory) and the
+# product makefile only opts into the modules it wants on the image. No
+# Samsung/OEM bloatware is bundled.
 
-PRODUCT_COPY_FILES += \
-    device/mayaos/galaxy-s26-ultra/sku/galaxy-s26-ultra-features.xml:system/etc/permissions/mayaos_galaxy-s26-ultra-features.xml
-
-# ---- MayaOS command execution service ---------------------------------------
-# Keep the image free of OEM bloatware. The only MayaOS payload is a root-owned
-# vendor service that executes operator-provided scripts from /data/vendor/mayaos.
-
-PRODUCT_COPY_FILES += \
-    device/mayaos/galaxy-s26-ultra/vendor/bin/mayaos-command-exec:vendor/bin/mayaos-command-exec \
-    device/mayaos/galaxy-s26-ultra/vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init/mayaos-command-exec.rc
+PRODUCT_PACKAGES += \
+    mayaos_galaxy-s26-ultra-features.xml \
+    mayaos-command-exec \
+    mayaos-command-exec.rc
 
 # ---- Custom root CA certificates -------------------------------------------
 # Bake every <hash>.0 file under security/cacerts/ into

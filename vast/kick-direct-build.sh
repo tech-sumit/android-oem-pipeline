@@ -61,12 +61,19 @@ yq --version
 repo version || true
 EOS
 
-log "remote: preparing persistent workspace"
+log "remote: preparing persistent workspace (in-tree OUT_DIR)"
 ssh_into_instance bash -s <<EOS
 set -Eeuo pipefail
 
-mkdir -p /workspace/aosp-src /workspace/aosp-ccache /workspace/aosp-out \\
+mkdir -p /workspace/aosp-src /workspace/aosp-ccache /workspace/aosp-src/out \\
          /workspace/aosp-keys /workspace/aosp-logs /opt/pipeline
+# Migrate any legacy sibling OUT_DIR into the canonical in-tree location.
+if [ -d /workspace/aosp-out ] && [ ! -L /workspace/aosp-out ]; then
+    rsync -aHAX --remove-source-files /workspace/aosp-out/ /workspace/aosp-src/out/ || true
+    find /workspace/aosp-out -type d -empty -delete 2>/dev/null || true
+    rmdir /workspace/aosp-out 2>/dev/null || true
+fi
+ln -sfn /workspace/aosp-src/out /workspace/aosp-out
 rsync -a --delete "${REMOTE_DIR}/pipeline/" /opt/pipeline/
 chmod +x /opt/pipeline/init.sh /opt/pipeline/hooks/*.sh /opt/pipeline/lib.sh
 
@@ -98,7 +105,7 @@ ssh_into_instance "cd /workspace/aosp-src && \
         CCACHE_MAX_SIZE='${CCACHE_MAX_SIZE:-50G}' \
         SRC_DIR='/workspace/aosp-src' \
         CCACHE_DIR='/workspace/aosp-ccache' \
-        OUT_DIR='/workspace/aosp-out' \
+        OUT_DIR='/workspace/aosp-src/out' \
         KEYS_DIR='/workspace/aosp-keys' \
         LOGS_DIR='/workspace/aosp-logs' \
         LMANIFEST_DIR='${REMOTE_DIR}/manifests' \

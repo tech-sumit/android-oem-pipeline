@@ -73,11 +73,17 @@ ssh_into_instance "cd ${REMOTE_DIR} && docker build \
     --build-arg BUILD_UID=\$(id -u) --build-arg BUILD_GID=\$(id -g) \
     -f docker/Dockerfile -t ${IMAGE_TAG} ."
 
-log "remote: ensuring persistent volumes exist"
+log "remote: ensuring persistent volumes exist (in-tree OUT_DIR)"
 ssh_into_instance bash -s <<'EOS'
 set -Eeuo pipefail
-mkdir -p /workspace/aosp-src /workspace/aosp-ccache /workspace/aosp-out \
+mkdir -p /workspace/aosp-src /workspace/aosp-ccache /workspace/aosp-src/out \
          /workspace/aosp-keys /workspace/aosp-logs
+if [ -d /workspace/aosp-out ] && [ ! -L /workspace/aosp-out ]; then
+    rsync -aHAX --remove-source-files /workspace/aosp-out/ /workspace/aosp-src/out/ || true
+    find /workspace/aosp-out -type d -empty -delete 2>/dev/null || true
+    rmdir /workspace/aosp-out 2>/dev/null || true
+fi
+ln -sfn /workspace/aosp-src/out /workspace/aosp-out
 EOS
 
 log "remote: kicking build (this takes ~5-7h cold, ~30-60min warm)"
@@ -96,9 +102,10 @@ ssh_into_instance "cd ${REMOTE_DIR} && \
         -e SKIP_SYNC='${SKIP_SYNC}' \
         -e SKIP_BUILD='${SKIP_BUILD}' \
         -e PARALLEL_JOBS='${PARALLEL_JOBS:-}' \
+        -e OUT_DIR='/srv/src/out' \
         -v /workspace/aosp-src:/srv/src \
         -v /workspace/aosp-ccache:/srv/ccache \
-        -v /workspace/aosp-out:/srv/out \
+        -v /workspace/aosp-src/out:/srv/src/out \
         -v /workspace/aosp-keys:/srv/keys \
         -v /workspace/aosp-logs:/srv/logs \
         -v ${REMOTE_DIR}/device-tree:/srv/devicetree:ro \
