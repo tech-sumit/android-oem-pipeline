@@ -114,6 +114,11 @@ MAYAOS_CA_FILES := $(wildcard device/mayaos/galaxy-s26-ultra/security/cacerts/*.
 PRODUCT_COPY_FILES += $(foreach f,$(MAYAOS_CA_FILES),\
     $(f):system/etc/security/cacerts/$(notdir $(f)))
 
+# Allow MayaOS roots to land in /system/etc/security/cacerts/ alongside the
+# GSI's bundle without violating generic_system.mk's artifact path requirement.
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    system/etc/security/cacerts/%
+
 BUILD_FINGERPRINT := samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys
 
 # Intentionally empty: no Samsung/OEM bloatware is bundled into MayaOS.

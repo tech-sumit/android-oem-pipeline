@@ -175,6 +175,13 @@ MAYAOS_CA_FILES := $(wildcard device/mayaos/galaxy-s26-ultra/security/cacerts/*.
 PRODUCT_COPY_FILES += $(foreach f,$(MAYAOS_CA_FILES),\
     $(f):system/etc/security/cacerts/$(notdir $(f)))
 
+# generic_system.mk's artifact path requirement reserves /system/etc/security
+# for the GSI's own CA bundle. Whitelist our additions so the device makefile
+# is allowed to drop extra .0 files alongside the GSI's roots without tripping
+# build/make/core/artifact_path_requirements.mk.
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    system/etc/security/cacerts/%
+
 # ---- Locked build fingerprint (override AOSP's auto-generated one) ----------
 # AOSP normally synthesizes BUILD_FINGERPRINT from PRODUCT_BRAND/MODEL/etc at
 # build time. We pin it here to byte-match the real S26 Ultra so analytics
