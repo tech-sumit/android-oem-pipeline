@@ -23,6 +23,27 @@ PROFILES_DEFAULT="galaxy-s26-ultra-intel-gpu,galaxy-s26-ultra-apple-silicon"
 PROFILES="${PROFILES:-$PROFILES_DEFAULT}"
 REPO_SYNC_JOBS="${REPO_SYNC_JOBS:-1}"
 SKIP_SYNC="${SKIP_SYNC:-0}"
+
+# R2 publish: opt-in. If R2_BUCKET is set, the after-build hook will upload
+# each profile's bundle to s3://${R2_BUCKET}/${R2_PREFIX}/<fingerprint-path>/
+# alongside metadata.json. Reads the standard AWS S3 client env vars.
+R2_BUCKET_VAL="${R2_BUCKET:-}"
+R2_PREFIX_VAL="${R2_PREFIX:-}"
+R2_ENDPOINT_VAL="${R2_ENDPOINT:-}"
+R2_ACCESS_KEY_ID_VAL="${R2_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+R2_SECRET_ACCESS_KEY_VAL="${R2_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+R2_ACCOUNT_ID_VAL="${R2_ACCOUNT_ID:-}"
+# Auto-derive endpoint from account id when not explicitly set.
+if [[ -z "$R2_ENDPOINT_VAL" && -n "$R2_ACCOUNT_ID_VAL" ]]; then
+    R2_ENDPOINT_VAL="https://${R2_ACCOUNT_ID_VAL}.r2.cloudflarestorage.com"
+fi
+
+# Capture git provenance so the build's after-build hook can record it in
+# metadata.json. Resolved client-side because the pod has no checkout of this
+# repo (only the synced subset).
+PIPELINE_GIT_SHA_VAL="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse HEAD 2>/dev/null || echo)"
+PIPELINE_GIT_BRANCH_VAL="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --abbrev-ref HEAD 2>/dev/null || echo)"
+PIPELINE_GIT_REMOTE_VAL="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." config --get remote.origin.url 2>/dev/null || echo)"
 # AOSP convention: OUT_DIR is a *relative* path resolved against $PWD (which
 # is $SRC_DIR for `m`). Soong's android.validatePathInternal rejects any path
 # starting with "/" or "../"; if OUT_DIR is absolute, downstream
@@ -180,6 +201,16 @@ env \\
     CACERTS_DIR="\${REMOTE_DIR}/ca" \\
     CONFIG_DIR="\${REMOTE_DIR}" \\
     CONFIG_FILE="\${REMOTE_DIR}/mayaos.yaml" \\
+    BUILD_BACKEND='runpod' \\
+    R2_BUCKET='${R2_BUCKET_VAL}' \\
+    R2_PREFIX='${R2_PREFIX_VAL}' \\
+    R2_ENDPOINT='${R2_ENDPOINT_VAL}' \\
+    AWS_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID_VAL}' \\
+    AWS_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY_VAL}' \\
+    AWS_DEFAULT_REGION='auto' \\
+    PIPELINE_GIT_SHA='${PIPELINE_GIT_SHA_VAL}' \\
+    PIPELINE_GIT_BRANCH='${PIPELINE_GIT_BRANCH_VAL}' \\
+    PIPELINE_GIT_REMOTE='${PIPELINE_GIT_REMOTE_VAL}' \\
     /opt/pipeline/init.sh 2>&1 | tee -a "\$LOG_FILE"
 REMOTE
 chmod +x /workspace/run-mayaos-build.sh

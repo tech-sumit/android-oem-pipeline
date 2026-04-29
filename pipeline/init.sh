@@ -169,7 +169,16 @@ for i in "${!PROFILE_IDS[@]}"; do
 
     run_hook before-build
 
-    log_phase "lunch ${lunch} && m -j${JOBS}"
+    # Build targets per profile:
+    #   droid              -- standard "everything in this product" (super.img,
+    #                         boot.img, vbmeta, vendor_boot, ...).
+    #   cvd-host_package   -- Cuttlefish host runtime archive
+    #                         (out/host/linux-x86/cvd-host_package.tar.gz);
+    #                         needed by the device farm to boot the bundle in a
+    #                         Cuttlefish VM. Bundle is otherwise non-self-contained.
+    # MAKE_TARGETS env var overrides the default list.
+    pt="${MAKE_TARGETS:-droid cvd-host_package}"
+    log_phase "lunch ${lunch} && m -j${JOBS} ${pt}"
     product_out_file="${LOGS_DIR}/product-out-${pid}.txt"
     (
         set +u
@@ -178,7 +187,8 @@ for i in "${!PROFILE_IDS[@]}"; do
         lunch "${lunch}"
         get_build_var PRODUCT_OUT > "${product_out_file}"
         set -u
-        m -j"${JOBS}" 2>&1 \
+        # shellcheck disable=SC2086
+        m -j"${JOBS}" ${pt} 2>&1 \
             | tee "${LOGS_DIR}/build-${pid}-$(date -u +%Y%m%dT%H%M%SZ).log"
     )
 
