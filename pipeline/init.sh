@@ -170,14 +170,18 @@ for i in "${!PROFILE_IDS[@]}"; do
     run_hook before-build
 
     # Build targets per profile:
-    #   droid              -- standard "everything in this product" (super.img,
-    #                         boot.img, vbmeta, vendor_boot, ...).
-    #   cvd-host_package   -- Cuttlefish host runtime archive
-    #                         (out/host/linux-x86/cvd-host_package.tar.gz);
-    #                         needed by the device farm to boot the bundle in a
-    #                         Cuttlefish VM. Bundle is otherwise non-self-contained.
+    #   droid    -- standard "everything in this product" (super.img,
+    #               boot.img, vbmeta, vendor_boot, ...).
+    #   hosttar  -- the phony target registered by
+    #               device/google/cuttlefish/build/cvd-host-package.go that
+    #               packages out/host/linux-x86/cvd-host_package/ into
+    #               out/host/linux-x86/cvd-host_package.tar.gz. The device farm
+    #               consumer needs this to boot the bundle in a Cuttlefish VM.
+    #               (`cvd-host_package` is the Soong module NAME -- it builds
+    #               the staged install dir but NOT the .tar.gz, which is
+    #               separate.)
     # MAKE_TARGETS env var overrides the default list.
-    pt="${MAKE_TARGETS:-droid cvd-host_package}"
+    pt="${MAKE_TARGETS:-droid hosttar}"
     log_phase "lunch ${lunch} && m -j${JOBS} ${pt}"
     product_out_file="${LOGS_DIR}/product-out-${pid}.txt"
     (
