@@ -19,7 +19,16 @@ PID="${CURRENT_PROFILE_ID:-mayaos}"
 PRODUCT_OUT="${CURRENT_PRODUCT_OUT:-${SRC_DIR}/out/target/product/vsoc_x86_64}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 ZIP_NAME="${PID}-img-${TS}.zip"
-PROFILE_OUT_DIR="${OUT_DIR}/${PID}"
+
+# OUT_DIR is intentionally relative ("out") at build time so Soong's path
+# validation accepts it. We resolve it to an absolute path here because the
+# zip step below cd's into PRODUCT_OUT, which would change what `out/...`
+# means relative to the working directory.
+if [[ "${OUT_DIR}" = /* ]]; then
+    PROFILE_OUT_DIR="${OUT_DIR}/${PID}"
+else
+    PROFILE_OUT_DIR="${SRC_DIR}/${OUT_DIR}/${PID}"
+fi
 
 if [[ ! -d "$PRODUCT_OUT" ]]; then
     log_error "expected build output at $PRODUCT_OUT; not found." \
