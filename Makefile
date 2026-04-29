@@ -4,7 +4,10 @@ SHELL := /usr/bin/env bash
 
 REPO ?= tech-sumit/android-oem-pipeline
 PROFILES ?= galaxy-s26-ultra-intel-gpu,galaxy-s26-ultra-apple-silicon
-REPO_SYNC_JOBS ?= 1
+# Google's repo tool recommends -j8 for AOSP. -j1 is a ~40 hour wall time on
+# the 1013-project Android 16 manifest; -j8 brings it down to ~1-2 hours and
+# still stays well under Gerrit's per-IP throttling threshold.
+REPO_SYNC_JOBS ?= 8
 TMUX_SESSION ?= mayaos-build
 REMOTE_LOG ?= /workspace/aosp-logs/mayaos-build.log
 REMOTE_OUT ?= /workspace/aosp-out
