@@ -15,6 +15,11 @@ REMOTE_OUT ?= /workspace/aosp-out
 	vast-build vast-build-direct vast-build-tmux vast-orchestrate \
 	vast-watch vast-logs vast-tail vast-tmux-ls vast-remote-status \
 	vast-fetch vast-fetch-latest vast-stop vast-destroy vast-clean-local \
+	runpod-doctor runpod-search-cpu runpod-search-gpu runpod-provision \
+	runpod-sync runpod-build runpod-orchestrate runpod-status \
+	runpod-watch runpod-logs runpod-tail runpod-tmux-ls \
+	runpod-fetch runpod-fetch-latest runpod-stop runpod-start \
+	runpod-destroy runpod-clean-local \
 	gh-secrets-list gh-secrets-check r2-check
 
 help: ## Show project commands
@@ -30,7 +35,7 @@ doctor: ## Check local tools and Vast.ai auth state
 	@echo "ok: docker, vastai, rsync, gh, and Vast.ai auth are ready"
 
 validate: ## Run local syntax, XML, and MayaOS profile checks
-	@bash -n vast/*.sh pipeline/*.sh pipeline/hooks/*.sh scripts/*.sh \
+	@bash -n vast/*.sh runpod/*.sh pipeline/*.sh pipeline/hooks/*.sh scripts/*.sh \
 		device-tree/mayaos/galaxy-s26-ultra/vendor/bin/mayaos-command-exec
 	@python3 scripts/validate-mayaos.py
 
@@ -105,11 +110,73 @@ vast-destroy: ## Destroy the active Vast.ai instance
 vast-clean-local: ## Remove local Vast instance pointer only
 	rm -f vast/.instance_id
 
+# ---------------------------------------------------------------------------
+# RunPod backend - second-source compute. Same pipeline/ runs here; only the
+# lifecycle scripts differ. See runpod/README.md for the full env reference.
+# ---------------------------------------------------------------------------
+
+runpod-doctor: ## Check local tools and RunPod auth state
+	@command -v curl >/dev/null || { echo "missing: curl"; exit 1; }
+	@command -v jq >/dev/null || { echo "missing: jq"; exit 1; }
+	@command -v rsync >/dev/null || { echo "missing: rsync"; exit 1; }
+	@./runpod/common.sh 2>/dev/null || true
+	@bash -c 'source runpod/common.sh && ensure_runpod_auth && echo "ok: curl, jq, rsync, and RunPod auth are ready"'
+
+runpod-search-cpu: ## List the cheapest SECURE CPU flavors
+	./runpod/search.sh cpu
+
+runpod-search-gpu: ## List the cheapest SECURE GPU types
+	./runpod/search.sh gpu
+
+runpod-provision: ## Rent a RunPod pod (defaults to SECURE CPU 32 vCPU + 1 TB volume)
+	./runpod/provision.sh
+
+runpod-sync: ## Sync this repo to the active RunPod pod
+	./runpod/sync-source.sh
+
+runpod-build: ## Start detached tmux build on active RunPod pod
+	PROFILES="$(PROFILES)" REPO_SYNC_JOBS="$(REPO_SYNC_JOBS)" TMUX_SESSION="$(TMUX_SESSION)" ./runpod/start-tmux-build.sh
+
+runpod-orchestrate: doctor validate runpod-provision runpod-build ## Provision a pod and start detached tmux build
+
+runpod-status: ## Show pod info, tmux state, and last build log lines
+	./runpod/status.sh
+
+runpod-watch: ## Attach to the remote tmux build session
+	TMUX_SESSION="$(TMUX_SESSION)" ./runpod/tmux-watch.sh
+
+runpod-logs: ## Print recent remote build log lines
+	./runpod/ssh.sh 'tail -200 "$(REMOTE_LOG)" 2>/dev/null || true'
+
+runpod-tail: ## Follow remote build log without attaching tmux
+	./runpod/ssh.sh 'tail -f "$(REMOTE_LOG)"'
+
+runpod-tmux-ls: ## List remote tmux sessions/windows
+	./runpod/ssh.sh 'tmux ls; tmux list-windows -t "$(TMUX_SESSION)" 2>/dev/null || true'
+
+runpod-fetch: ## Fetch build artifacts from the active RunPod pod
+	REMOTE_OUT="$(REMOTE_OUT)" ./runpod/fetch-artifacts.sh
+
+runpod-fetch-latest: ## Fetch artifacts into ./out/latest
+	LOCAL_OUT_DIR="$$(pwd)/out/latest" REMOTE_OUT="$(REMOTE_OUT)" ./runpod/fetch-artifacts.sh
+
+runpod-stop: ## Stop active RunPod pod (keeps /workspace volume)
+	./runpod/destroy.sh --stop
+
+runpod-start: ## Start the previously-stopped RunPod pod
+	./runpod/destroy.sh --start
+
+runpod-destroy: ## Destroy the active RunPod pod (deletes /workspace too)
+	./runpod/destroy.sh --destroy
+
+runpod-clean-local: ## Remove local RunPod pod pointer only
+	rm -f runpod/.pod_id
+
 gh-secrets-list: ## List GitHub Actions secret names
 	gh secret list --repo "$(REPO)"
 
 gh-secrets-check: ## Verify required GitHub Actions secrets exist
-	@required="VAST_API_KEY VAST_SSH_PRIVATE_KEY VAST_SSH_PUBLIC_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET"; \
+	@required="VAST_API_KEY VAST_SSH_PRIVATE_KEY VAST_SSH_PUBLIC_KEY RUNPOD_API_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET"; \
 	existing="$$(gh secret list --repo "$(REPO)" | awk '{print $$1}')"; \
 	missing=0; \
 	for key in $$required; do \

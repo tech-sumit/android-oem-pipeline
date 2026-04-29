@@ -6,6 +6,8 @@ ca/*.key
 ca/*-private*
 vast_api_key
 vast_api_key.txt
+runpod_api_key
+runpod_api_key.txt
 .env
 .env.*
 !.env.example
@@ -23,6 +25,10 @@ mirror/
 vast/.instance_id
 vast/.last_offer
 vast/known_hosts
+
+# --- RunPod state -----------------------------------------------------------
+runpod/.pod_id
+runpod/known_hosts
 
 # --- Editor / OS noise ------------------------------------------------------
 .DS_Store
