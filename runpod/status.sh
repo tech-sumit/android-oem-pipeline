@@ -51,12 +51,51 @@ tmux ls 2>/dev/null || echo '(no tmux session)'
 
 echo
 echo '--- repo sync progress ---'
-synced=\$(ls '${SRC_DIR_REMOTE}/.repo/projects' 2>/dev/null | wc -l | tr -d ' ')
-total=\$(grep -c '<project ' '${SRC_DIR_REMOTE}/.repo/manifests/default.xml' 2>/dev/null || echo '?')
-echo \"  projects synced : \${synced} / \${total}\"
+# Counting top-level entries in .repo/projects/ undercounts dramatically because
+# nested project paths (e.g. external/foo/bar) are stored at depth >1. The real
+# signal is: how many of the manifest's <project> paths have a worktree on disk.
+synced_total=\$(python3 - <<PY 2>/dev/null
+import os, xml.etree.ElementTree as ET
+m = '${SRC_DIR_REMOTE}/.repo/manifests/default.xml'
+try:
+    root = ET.parse(m).getroot()
+except Exception:
+    print('? / ?'); raise SystemExit
+total = 0; present = 0
+for p in root.findall('project'):
+    total += 1
+    path = p.get('path') or p.get('name')
+    if os.path.isdir(os.path.join('${SRC_DIR_REMOTE}', path)):
+        present += 1
+print(f'{present} / {total}')
+PY
+)
+echo \"  projects synced : \${synced_total:-?}\"
 du -sh '${SRC_DIR_REMOTE}' 2>/dev/null | awk '{print \"  source size     : \" \$1}'
 du -sh '${SRC_DIR_REMOTE}/out' 2>/dev/null | awk '{print \"  out size        : \" \$1}'
 du -sh /workspace/aosp-ccache 2>/dev/null | awk '{print \"  ccache size     : \" \$1}'
+
+echo
+echo '--- ninja progress ---'
+# Soong ninja prints '[ N% built/total]' on every action; the latest is real progress.
+grep -oE '^\[ *[0-9]+% +[0-9]+/[0-9]+\]' '${LOG_FILE}' 2>/dev/null | tail -1 | sed 's/^/  /' || echo '  (no ninja progress yet)'
+
+echo
+echo '--- cgroup memory (the only real OOM signal) ---'
+if [ -r /sys/fs/cgroup/memory/memory.stat ]; then
+    awk -v cap=\"\$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)\" '
+        /^cache /        { cache=\$2 }
+        /^rss /          { rss=\$2 }
+        END {
+            printf \"  rss (real)      : %.1f GB  ← OOM-killer trigger if this hits the cap\n\", rss/1024/1024/1024
+            printf \"  cache           : %.1f GB  ← instantly reclaimable\n\", cache/1024/1024/1024
+            printf \"  cap             : %.1f GB\n\", cap/1024/1024/1024
+        }
+    ' /sys/fs/cgroup/memory/memory.stat
+fi
+[ -r /sys/fs/cgroup/memory/memory.failcnt ] && \\
+    echo \"  failcnt         : \$(cat /sys/fs/cgroup/memory/memory.failcnt) (cache evictions, NOT OOM kills)\"
+echo \"  oom kills(dmesg): \$(dmesg 2>/dev/null | grep -ciE 'oom|killed.process' || echo 0)\"
 
 echo
 echo '--- active processes ---'
