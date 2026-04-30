@@ -27,6 +27,8 @@ REMOTE_OUT ?= /workspace/aosp-out
 	cuttlefish-up cuttlefish-down cuttlefish-logs cuttlefish-shell \
 	cuttlefish-adb cuttlefish-scrcpy cuttlefish-status \
 	qemu-up qemu-down qemu-adb qemu-scrcpy \
+	emulator-up emulator-down emulator-adb emulator-scrcpy \
+	runpod-emulator-fetch runpod-emulator-build \
 	gh-secrets-list gh-secrets-check r2-check
 
 help: ## Show project commands
@@ -237,6 +239,41 @@ qemu-adb: ## adb connect to the qemu-booted device
 
 qemu-scrcpy: qemu-adb ## Launch scrcpy against the qemu-booted device
 	@scrcpy -s 127.0.0.1:6520
+
+# ---------------------------------------------------------------------------
+# Android Studio Emulator (HVF-native arm64 on Mac). Requires the AOSP image
+# to be built with sdk_phone64_arm64 lunch target so the output is in the
+# emulator-AVD format (kernel-ranchu, system.img, ramdisk.img, etc.).
+# ---------------------------------------------------------------------------
+
+runpod-emulator-build: ## Kick a sdk_phone64_arm64 emulator-target build on the active pod
+	./runpod/ssh.sh 'cd /workspace/aosp-src && source build/envsetup.sh && \
+		lunch sdk_phone64_arm64-trunk_staging-userdebug && \
+		tmux new-window -t mayaos-build -n emulator -d \
+		"time m -j16 droid emu_img 2>&1 | tee /workspace/aosp-logs/mayaos-emulator.log"'
+
+runpod-emulator-fetch: ## Pull emulator-target artifacts (kernel-ranchu, system.img, ...) from the pod
+	@test -n "$(PROFILE)" || { echo "usage: make runpod-emulator-fetch PROFILE=<id>"; exit 1; }
+	mkdir -p out/latest/$(PROFILE)/emu
+	./runpod/ssh.sh 'ls -1 /workspace/aosp-src/out/target/product/emu64a/ 2>/dev/null | grep -E "kernel-ranchu|^(system|vendor|userdata|ramdisk|vbmeta).img$$|advancedFeatures.ini" || true'
+	@source runpod/common.sh && \
+		IFS=$$'\t' read -r user host port < <(current_pod_ssh) && \
+		rsync -azP -e "ssh -i $$(ssh_key_path) -p $$port -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" \
+			"$$user@$$host:/workspace/aosp-src/out/target/product/emu64a/{kernel-ranchu,system.img,vendor.img,userdata.img,ramdisk.img,vbmeta.img,advancedFeatures.ini}" \
+			out/latest/$(PROFILE)/emu/ 2>&1 | tail
+
+emulator-up: ## Boot AOSP emulator AVD with PROFILE's images
+	@test -n "$(PROFILE)" || { echo "usage: make emulator-up PROFILE=<id>"; exit 1; }
+	PROFILE="$(PROFILE)" ./docker/emulator/run.sh
+
+emulator-down: ## Kill the running emulator
+	@pkill -f "emulator.*-avd mayaos-" 2>/dev/null && echo "killed emulator" || echo "no emulator running"
+
+emulator-adb: ## adb connect to the emulator (default port 6521)
+	@adb connect 127.0.0.1:6521
+
+emulator-scrcpy: emulator-adb ## scrcpy mirror the emulator
+	@scrcpy -s 127.0.0.1:6521
 
 gh-secrets-list: ## List GitHub Actions secret names
 	gh secret list --repo "$(REPO)"
