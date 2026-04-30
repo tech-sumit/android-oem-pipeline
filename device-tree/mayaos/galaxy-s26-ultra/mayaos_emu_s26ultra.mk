@@ -24,7 +24,14 @@
 
 # Inherit AOSP SDK phone arm64 (provides emu64a board, ranchu kernel, gfxstream
 # GPU, sdk_phone64_arm64 product config, etc.).
-$(call inherit-product, $(SRC_TARGET_DIR)/product/sdk_phone64_arm64.mk)
+#
+# Path note: in android-16.0.0_r* (and most modern AOSP) the sdk_phone* product
+# makefiles live under device/generic/goldfish/, NOT under build/make/target/
+# product/ where they used to. The latter only has aosp_arm64.mk and friends.
+# Source: device/generic/goldfish/64bitonly/product/sdk_phone64_arm64.mk
+# itself inherits build/make/target/product/core_64_bit_only.mk plus the
+# goldfish board+phone composition.
+$(call inherit-product, device/generic/goldfish/64bitonly/product/sdk_phone64_arm64.mk)
 
 # ---- Product identity (AOSP build system) ----------------------------------
 # Same convention as the cuttlefish variants: PRODUCT_NAME stays in the mayaos
