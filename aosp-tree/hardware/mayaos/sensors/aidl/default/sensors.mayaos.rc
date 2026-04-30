@@ -1,0 +1,8 @@
+service vendor.sensors-default /vendor/bin/hw/android.hardware.sensors-service.mayaos
+    interface aidl android.hardware.sensors.ISensors/default
+    class hal
+    user system
+    group system
+    capabilities WAKE_ALARM
+    task_profiles ServiceCapacityLow
+    rlimit rtprio 10 10

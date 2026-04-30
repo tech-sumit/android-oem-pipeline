@@ -1,0 +1,48 @@
+// hardware/mayaos/sensors/aidl/Android.bp
+//
+// MayaOS host-injectable sensors HAL service. Built against the upstream
+// android.hardware.sensors-V3 AIDL interface; replaces the goldfish stub
+// HAL on emu64a/emu64x.
+//
+// Reference: hardware/interfaces/sensors/aidl/default/ in AOSP, plus the
+// waydroid-sensors C++ implementation.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_binary {
+    name: "android.hardware.sensors-service.mayaos",
+    relative_install_path: "hw",
+    init_rc: ["default/sensors.mayaos.rc"],
+    vintf_fragments: ["../vintf/android.hardware.sensors-service.mayaos.xml"],
+    vendor: true,
+
+    srcs: [
+        "default/main.cpp",
+        "default/Sensors.cpp",
+        "default/SensorThread.cpp",
+        "default/HostTransport.cpp",
+    ],
+
+    local_include_dirs: [
+        "include/sensors-impl",
+        "default",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libbinder_ndk",
+        "libcutils",
+        "liblog",
+        "libutils",
+        "libfmq",
+        "android.hardware.sensors-V3-ndk",
+    ],
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-parameter",
+    ],
+}
