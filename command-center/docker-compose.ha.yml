@@ -1,0 +1,113 @@
+# MDF HA stack -- 2 fleet pods sharing one RethinkDB cluster.
+#
+# Pod-0 hosts the canonical RethinkDB primary; pod-1 joins as a
+# secondary. Replication is native RethinkDB cluster mode (write
+# acks N-1 of N; read primary by default; read secondary on
+# read-only routes).
+#
+# Run on EACH pod. The MDF_ROLE env var distinguishes them.
+#
+# Pod-0:
+#   MDF_ROLE=primary    MDF_PRIMARY_HOST=mdf-pod-0  docker compose -f docker-compose.ha.yml up -d
+# Pod-1:
+#   MDF_ROLE=secondary  MDF_PRIMARY_HOST=mdf-pod-0.mdf.mayaos.dev  \
+#     docker compose -f docker-compose.ha.yml up -d
+#
+# References:
+#   - https://rethinkdb.com/docs/sharding-and-replication/
+#   - plan §10
+
+name: mdf-ha
+
+x-mdf-base: &mdf-base
+  image: mdf:fleet
+  privileged: true
+  restart: unless-stopped
+  cap_add: [NET_ADMIN, SYS_NICE, SYS_PTRACE, SYS_RESOURCE]
+  shm_size: "16gb"
+  devices: ["/dev/kvm:/dev/kvm", "/dev/net/tun:/dev/net/tun"]
+
+services:
+  rethink:
+    image: rethinkdb:2.4
+    container_name: rethink
+    hostname: ${MDF_HOSTNAME}-rethink
+    restart: unless-stopped
+    command: >
+      rethinkdb --bind all --no-update-check
+      --server-name ${MDF_HOSTNAME}-rethink
+      --canonical-address ${MDF_PUBLIC_IP}
+      $${RETHINK_JOIN_FLAG:-}
+    environment:
+      RETHINK_JOIN_FLAG: ${RETHINK_JOIN_FLAG:-}
+    volumes:
+      - rethink_data:/data
+    ports:
+      - "29015:29015"   # cluster port; must reach pod-0 from pod-1
+      - "8080:8080"     # rethink admin
+    networks: [mdfnet]
+
+  mdf:
+    <<: *mdf-base
+    container_name: mdf
+    hostname: ${MDF_HOSTNAME}
+    build: { context: ., dockerfile: Dockerfile }
+    volumes:
+      - mdf_state:/var/lib/mdf
+      - mayaos_images:/srv/mayaos-images:ro
+      - /dev/hugepages:/dev/hugepages
+    environment:
+      MDF_PUBLIC_IP:     ${MDF_PUBLIC_IP}
+      MDF_HOSTNAME:      ${MDF_HOSTNAME}
+      MDF_PROVIDER_NAME: ${MDF_PROVIDER_NAME}
+      MDF_FLEET_SIZE:    ${MDF_FLEET_SIZE:-80}
+      MDF_ROLE:          ${MDF_ROLE:-primary}
+      STF_AUTH_TYPE:     "oidc"
+      STF_DEFAULT_USER:  ${MDF_OPERATOR_EMAIL:-ops@mayaos.dev}
+      STF_SECRET:        ${STF_SECRET:?STF_SECRET must be set in .env}
+      RETHINKDB_PORT_28015_TCP_ADDR: rethink
+      RETHINKDB_PORT_28015_TCP_PORT: "28015"
+      RETHINKDB_CANONICAL_ADDR:      ${MDF_PUBLIC_IP}
+      RETHINKDB_SERVER_NAME:         ${MDF_HOSTNAME}
+    depends_on: [rethink]
+    networks: [mdfnet]
+
+  mdf-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: mdf-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [mdfnet]
+
+  rethink-backup:
+    # Periodic R2 snapshot of the local RethinkDB state.
+    # Runs on every pod (the secondary's snapshot is identical to the
+    # primary's after replication, so there's no "wasted" snapshot.)
+    image: mdf:fleet
+    container_name: rethink-backup
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-lc"]
+    command: |
+      while true; do
+        rethinkdb dump --connect rethink:28015 --file /tmp/mdf.dump.tar.gz
+        aws s3 cp /tmp/mdf.dump.tar.gz \
+          s3://android/mdf/snapshots/${MDF_HOSTNAME}-$$(date +%s).tar.gz \
+          --endpoint-url $$R2_ENDPOINT
+        sleep 3600
+      done
+    environment:
+      R2_ENDPOINT:           ${R2_ENDPOINT}
+      AWS_ACCESS_KEY_ID:     ${R2_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION:    auto
+    networks: [mdfnet]
+
+volumes:
+  mdf_state:
+  rethink_data:
+  mayaos_images:
+    external: true
+
+networks:
+  mdfnet:
+    driver: bridge
