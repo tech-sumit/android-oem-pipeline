@@ -23,6 +23,10 @@ REMOTE_OUT ?= /workspace/aosp-out
 	runpod-watch runpod-logs runpod-tail runpod-tmux-ls \
 	runpod-fetch runpod-fetch-latest runpod-stop runpod-start \
 	runpod-destroy runpod-clean-local \
+	r2-fetch r2-fetch-latest \
+	cuttlefish-up cuttlefish-down cuttlefish-logs cuttlefish-shell \
+	cuttlefish-adb cuttlefish-scrcpy cuttlefish-status \
+	qemu-up qemu-down qemu-adb qemu-scrcpy \
 	gh-secrets-list gh-secrets-check r2-check
 
 help: ## Show project commands
@@ -174,6 +178,65 @@ runpod-destroy: ## Destroy the active RunPod pod (deletes /workspace too)
 
 runpod-clean-local: ## Remove local RunPod pod pointer only
 	rm -f runpod/.pod_id
+
+r2-fetch: ## Fetch a profile bundle from R2 (PROFILES=<id>, ENV_FILE=<path/to/.env>)
+	@test -n "$(PROFILES)" || { echo "usage: make r2-fetch PROFILES=<id> [ENV_FILE=...]"; exit 1; }
+	PROFILES="$(PROFILES)" ENV_FILE="$(ENV_FILE)" ./runpod/r2-fetch.sh
+
+r2-fetch-latest: ## Fetch a profile bundle from R2 into ./out/latest
+	@test -n "$(PROFILES)" || { echo "usage: make r2-fetch-latest PROFILES=<id>"; exit 1; }
+	PROFILES="$(PROFILES)" ENV_FILE="$(ENV_FILE)" \
+		LOCAL_OUT_DIR="$$(pwd)/out/latest" ./runpod/r2-fetch.sh
+
+# ---------------------------------------------------------------------------
+# Cuttlefish-in-Docker -- boot a built profile locally for screen-mirroring.
+# On macOS this runs the linux/amd64 cuttlefish-orchestration image under
+# Rosetta + TCG (no /dev/kvm), so cold boot takes ~30-60 min. On Linux with
+# /dev/kvm it's ~1-2 min. Same Make targets either way.
+# ---------------------------------------------------------------------------
+
+cuttlefish-up: ## Boot PROFILE in cuttlefish container (PROFILE=galaxy-s26-ultra-apple-silicon)
+	@test -n "$(PROFILE)" || { echo "usage: make cuttlefish-up PROFILE=<id>"; exit 1; }
+	PROFILE="$(PROFILE)" ./docker/cuttlefish/run.sh
+
+cuttlefish-down: ## Stop and remove the cuttlefish container
+	@docker rm -f cf-mayaos 2>/dev/null && echo "removed cf-mayaos" || echo "no cf-mayaos container"
+
+cuttlefish-status: ## Show container + cvd status
+	@docker ps --filter name=cf-mayaos --format 'container: {{.Names}}  status: {{.Status}}  ports: {{.Ports}}' || true
+	@docker exec cf-mayaos bash -lc 'cvd fleet 2>/dev/null || echo "(cvd not yet running)"' 2>/dev/null || true
+
+cuttlefish-logs: ## Tail the cvd boot log inside the container
+	@docker exec -it cf-mayaos bash -lc 'tail -F /tmp/cvd-create.log /home/vsoc-01/cuttlefish_runtime/launcher.log 2>/dev/null'
+
+cuttlefish-shell: ## Open a shell inside the cuttlefish container
+	@docker exec -it cf-mayaos bash -l
+
+cuttlefish-adb: ## adb connect to the booted device
+	@adb connect 127.0.0.1:6520
+
+cuttlefish-scrcpy: cuttlefish-adb ## Launch scrcpy mirroring the booted device
+	@scrcpy -s 127.0.0.1:6520
+
+# ---------------------------------------------------------------------------
+# qemu-system-aarch64 + Apple HVF -- direct boot, skips Cuttlefish entirely.
+# Use this on macOS when you need native arm64 acceleration. The image was
+# built FOR Cuttlefish, so first-stage init may complain about missing vsock
+# or virtio-fs; iterate on EXTRA_APPEND until it boots.
+# ---------------------------------------------------------------------------
+
+qemu-up: ## Boot PROFILE under qemu+HVF (PROFILE=galaxy-s26-ultra-apple-silicon)
+	@test -n "$(PROFILE)" || { echo "usage: make qemu-up PROFILE=<id> [EXTRA_APPEND='...']"; exit 1; }
+	PROFILE="$(PROFILE)" EXTRA_APPEND="$(EXTRA_APPEND)" ./docker/qemu/run.sh
+
+qemu-down: ## Kill the running qemu process
+	@pkill -f "qemu-system-aarch64.*mayaos-" 2>/dev/null && echo "killed qemu" || echo "no qemu running"
+
+qemu-adb: ## adb connect to the qemu-booted device
+	@adb connect 127.0.0.1:6520
+
+qemu-scrcpy: qemu-adb ## Launch scrcpy against the qemu-booted device
+	@scrcpy -s 127.0.0.1:6520
 
 gh-secrets-list: ## List GitHub Actions secret names
 	gh secret list --repo "$(REPO)"
