@@ -1,0 +1,24 @@
+groups:
+  - name: mdf-ota
+    interval: 5m
+    rules:
+      - alert: MDFOTAChannelStable_Stale
+        expr: max(mdf_ota_channel_publish_age_seconds{channel="stable"}) > 7 * 24 * 3600
+        for: 1h
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "stable OTA channel has not been updated for >7d"
+          description: |
+            Last build on stable was promoted {{ $value | humanizeDuration }} ago.
+            Either no canary builds have passed OR canary -> stable promotion
+            is broken. See ota/tools/promote.py.
+          runbook: "docs/runbook.md#ota-channel-stale"
+
+      - alert: MDFOTAChannelCanary_Stale
+        expr: max(mdf_ota_channel_publish_age_seconds{channel="canary"}) > 24 * 3600
+        for: 1h
+        labels: { severity: info, team: mdf }
+        annotations:
+          summary: "canary OTA channel has not been updated for >24h"
+          description: |
+            Build pipeline may be stuck. Check .github/workflows/ota.yml runs.

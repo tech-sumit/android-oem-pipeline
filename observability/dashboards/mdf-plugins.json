@@ -1,0 +1,93 @@
+{
+  "annotations": { "list": [] },
+  "description": "MDF plugin health: per-plugin throughput + error rate + latency. mitm + recording + ota-channel + hvf-preview + warmpool.",
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "title": "MITM: flows by host (top 20)",
+      "type": "barchart",
+      "id": 1,
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "topk(20, sum by (host) (rate(mdf_mitm_flows_total{pod=~\"$pod\"}[5m])))", "legendFormat": "{{host}}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Recording: active sessions",
+      "type": "stat",
+      "id": 2,
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "sum(mdf_rec_sessions_active{pod=~\"$pod\"})", "refId": "A" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Recording: R2 upload lag (s)",
+      "type": "timeseries",
+      "id": 3,
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "max(mdf_r2_upload_lag_seconds{kind=\"recording\", pod=~\"$pod\"})", "refId": "A" }
+      ]
+    },
+    {
+      "title": "OTA: channel publish age",
+      "type": "table",
+      "id": 4,
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "max by (channel) (mdf_ota_channel_publish_age_seconds{pod=~\"$pod\"})", "refId": "A", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "title": "HVF handoffs / hour",
+      "type": "stat",
+      "id": 5,
+      "gridPos": { "x": 12, "y": 8, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "sum(rate(mdf_hvf_handoffs_total{pod=~\"$pod\"}[1h])) * 3600", "refId": "A" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Warmpool: target vs current",
+      "type": "timeseries",
+      "id": 6,
+      "gridPos": { "x": 18, "y": 8, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "max(mdf_warmpool_target{pod=~\"$pod\"})",                              "legendFormat": "target",  "refId": "A" },
+        { "expr": "sum(mdf_warmpool_size{pod=~\"$pod\", status=\"ready\"})",              "legendFormat": "ready",   "refId": "B" },
+        { "expr": "sum(mdf_warmpool_size{pod=~\"$pod\", status=\"booting\"})",            "legendFormat": "booting", "refId": "C" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["mdf", "plugins", "rev5.1"],
+  "templating": {
+    "list": [
+      {
+        "name": "pod",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "mimir" },
+        "query": "label_values(mdf_instances_total, pod)",
+        "current": { "value": ".*", "text": "All" },
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "MDF — Plugins",
+  "uid": "mdf-plugins",
+  "version": 1
+}

@@ -1,0 +1,17 @@
+groups:
+  - name: mdf-warmpool
+    interval: 30s
+    rules:
+      - alert: MDFCheckoutLatencySpike
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, pod) (rate(mdf_warmpool_checkout_seconds_bucket[5m]))
+          ) > 0.5
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "Warmpool checkout p99 > 500ms on {{ $labels.pod }}"
+          description: |
+            QMP cont() roundtrip should be ~50ms. Spike to {{ $value }}s
+            indicates pool starvation or QMP socket contention.
+          runbook: "docs/runbook.md#checkout-latency-spike"

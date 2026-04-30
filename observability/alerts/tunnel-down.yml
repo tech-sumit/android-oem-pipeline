@@ -1,0 +1,14 @@
+groups:
+  - name: mdf-edge
+    interval: 30s
+    rules:
+      - alert: MDFCloudflareTunnelDown
+        expr: max by (pod) (cloudflared_tunnel_active{state="connected"}) < 1
+        for: 2m
+        labels: { severity: page, team: mdf }
+        annotations:
+          summary: "cloudflared tunnel down on {{ $labels.pod }}"
+          description: |
+            Operator UI unreachable for the last 2m. Likely cloudflared
+            sidecar crash or Cloudflare edge incident.
+          runbook: "docs/runbook.md#cloudflare-tunnel-down"

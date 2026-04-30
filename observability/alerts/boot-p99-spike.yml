@@ -1,0 +1,29 @@
+groups:
+  - name: mdf-fleet
+    interval: 30s
+    rules:
+      - alert: MDFColdBootP99Spike
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, pod) (rate(mdf_boot_duration_seconds_bucket{kind="cold"}[5m]))
+          ) > 90
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "MDF cold boot p99 > 90s on {{ $labels.pod }}"
+          description: |
+            Cold boot p99 = {{ $value }}s. The rev 5.1 §6 target at tier-100 is
+            60s; tier-250 is 90s. Investigate KSM, hugepages, or qemu IO scheduler.
+          runbook: "docs/runbook.md#boot-p99-spike"
+
+      - alert: MDFWarmRestoreP99Spike
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, pod) (rate(mdf_boot_duration_seconds_bucket{kind="warm"}[5m]))
+          ) > 5
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "MDF warm restore p99 > 5s on {{ $labels.pod }}"
+          description: "Warm restore p99 = {{ $value }}s; rev 5.1 §6.5.1 target is <= 1.5s."
+          runbook: "docs/runbook.md#warm-restore-p99-spike"

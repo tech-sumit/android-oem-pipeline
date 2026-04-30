@@ -1,0 +1,52 @@
+// Grafana Alloy config fragment for the MDF stack.
+//
+// This file is concatenated onto the n8n parent stack's Alloy config
+// (already running on the pod). It adds:
+//   - 3 Prometheus scrape jobs (mdf core + plugins + per-qemu KSM/cgroups)
+//   - 2 Loki source loops (qemu logs + supervisord/STF logs)
+//
+// References:
+//   - https://grafana.com/docs/alloy/latest/reference/components/
+
+prometheus.scrape "mdf_provider" {
+    targets = [{ "__address__" = "127.0.0.1:7180", "job" = "mdf-provider" }]
+    forward_to = [prometheus.remote_write.mimir.receiver]
+    scrape_interval = "15s"
+}
+
+prometheus.scrape "mdf_plugins" {
+    targets = [{ "__address__" = "127.0.0.1:7190", "job" = "mdf-plugins" }]
+    forward_to = [prometheus.remote_write.mimir.receiver]
+    scrape_interval = "15s"
+}
+
+prometheus.scrape "mdf_node" {
+    // node_exporter for KSM, hugepages, cgroup CPU
+    targets = [{ "__address__" = "127.0.0.1:9100", "job" = "mdf-node" }]
+    forward_to = [prometheus.remote_write.mimir.receiver]
+    scrape_interval = "30s"
+}
+
+loki.source.docker "mdf_qemu" {
+    host = "unix:///var/run/docker.sock"
+    targets = [{
+        "__address__"   = "localhost",
+        "container"     = "mdf",
+        "job"           = "mdf-qemu",
+        "source"        = "qemu",
+    }]
+    forward_to = [loki.write.grafana_cloud.receiver]
+    relabel_rules = """
+      - source_labels: [__meta_docker_container_log_stream]
+        target_label:  stream
+    """
+}
+
+loki.source.file "mdf_supervisord" {
+    targets = [
+        { "__path__" = "/var/log/mdf/supervisord.log",   job = "mdf-supervisord" },
+        { "__path__" = "/var/log/mdf/provider.log",      job = "mdf-provider"   },
+        { "__path__" = "/var/log/stf/stf.log",           job = "mdf-stf"        },
+    ]
+    forward_to = [loki.write.grafana_cloud.receiver]
+}

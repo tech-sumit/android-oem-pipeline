@@ -1,0 +1,18 @@
+groups:
+  - name: mdf-mitm
+    interval: 30s
+    rules:
+      - alert: MDFMitmFlowStall
+        expr: |
+          (sum by (serial, pod) (mdf_mitm_sessions_active) > 0)
+          and
+          (sum by (serial, pod) (rate(mdf_mitm_flows_total[2m])) == 0)
+        for: 2m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "MITM session active but no flows for >2m on {{ $labels.serial }}"
+          description: |
+            mitmdump is up but no traffic is being intercepted.
+            Common causes: iptables NAT rule lost, app pinning to TLSv1.3 GREASE
+            with non-standard ALPN, or device offline.
+          runbook: "docs/runbook.md#mitm-flow-stall"

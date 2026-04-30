@@ -1,0 +1,131 @@
+{
+  "annotations": { "list": [] },
+  "description": "MayaOS Device Farm — fleet overview. Instance count, boot histograms, warmpool depth, allocation latency, KSM dedupe.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Instances by status",
+      "type": "stat",
+      "id": 1,
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "sum by (status) (mdf_instances_total{pod=~\"$pod\"})", "legendFormat": "{{status}}", "refId": "A" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Cold-boot p50/p95/p99 (s)",
+      "type": "timeseries",
+      "id": 2,
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  sum by (le) (rate(mdf_boot_duration_seconds_bucket{kind=\"cold\", pod=~\"$pod\"}[5m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(mdf_boot_duration_seconds_bucket{kind=\"cold\", pod=~\"$pod\"}[5m])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(mdf_boot_duration_seconds_bucket{kind=\"cold\", pod=~\"$pod\"}[5m])))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Warm-restore p50/p95/p99 (s)",
+      "type": "timeseries",
+      "id": 3,
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  sum by (le) (rate(mdf_boot_duration_seconds_bucket{kind=\"warm\", pod=~\"$pod\"}[5m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(mdf_boot_duration_seconds_bucket{kind=\"warm\", pod=~\"$pod\"}[5m])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(mdf_boot_duration_seconds_bucket{kind=\"warm\", pod=~\"$pod\"}[5m])))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Warmpool depth",
+      "type": "timeseries",
+      "id": 4,
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "sum by (status) (mdf_warmpool_size{pod=~\"$pod\"})", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Allocation latency (warmpool checkout)",
+      "type": "timeseries",
+      "id": 5,
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  sum by (le) (rate(mdf_warmpool_checkout_seconds_bucket{pod=~\"$pod\"}[5m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(mdf_warmpool_checkout_seconds_bucket{pod=~\"$pod\"}[5m])))", "legendFormat": "p99", "refId": "B" }
+      ]
+    },
+    {
+      "title": "KSM dedupe ratio",
+      "type": "timeseries",
+      "id": 6,
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "node_ksm_pages_sharing{pod=~\"$pod\"} / clamp_min(node_ksm_pages_total{pod=~\"$pod\"}, 1)", "legendFormat": "{{pod}}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "MITM flows / sec",
+      "type": "timeseries",
+      "id": 7,
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "sum by (phase) (rate(mdf_mitm_flows_total{pod=~\"$pod\"}[1m]))", "legendFormat": "{{phase}}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "OTA attempts / sec",
+      "type": "timeseries",
+      "id": 8,
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        { "expr": "sum by (channel, state) (rate(mdf_ota_attempts_total{pod=~\"$pod\"}[1m]))", "legendFormat": "{{channel}}/{{state}}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "qemu live logs",
+      "type": "logs",
+      "id": 9,
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{container_name=\"mdf\", source=\"qemu\", pod=~\"$pod\"} | json", "refId": "A" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["mdf", "rev5.1"],
+  "templating": {
+    "list": [
+      {
+        "name": "pod",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "mimir" },
+        "refresh": 1,
+        "query": "label_values(mdf_instances_total, pod)",
+        "current": { "value": ".*", "text": "All" },
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "",
+  "title": "MDF — Fleet",
+  "uid": "mdf-fleet",
+  "version": 1,
+  "weekStart": ""
+}

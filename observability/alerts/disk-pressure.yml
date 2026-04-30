@@ -1,0 +1,17 @@
+groups:
+  - name: mdf-host
+    interval: 30s
+    rules:
+      - alert: MDFDiskPressure
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/var/lib/mdf"}
+            / node_filesystem_size_bytes{mountpoint="/var/lib/mdf"}) < 0.20
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "/var/lib/mdf < 20% free on {{ $labels.pod }}"
+          description: |
+            Recordings + snapshots eat disk. LRU eviction kicks in at 80%
+            but if R2 upload is lagging the local copies pile up.
+            Consider running: aws s3 sync /var/lib/mdf/recordings ...
+          runbook: "docs/runbook.md#disk-pressure"

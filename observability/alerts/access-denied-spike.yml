@@ -1,0 +1,15 @@
+groups:
+  - name: mdf-edge
+    interval: 30s
+    rules:
+      - alert: MDFAccessDenySpike
+        expr: sum(rate(cloudflare_access_decisions_total{decision="deny"}[5m])) > 10/60
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "Cloudflare Access deny rate > 10/min for >5m"
+          description: |
+            Spike in denied requests. Could indicate a credential rotation
+            issue, an enumeration attempt, or someone forgot to renew their
+            access policy.
+          runbook: "docs/runbook.md#access-denied-spike"

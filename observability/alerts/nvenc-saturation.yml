@@ -1,0 +1,15 @@
+groups:
+  - name: mdf-host
+    interval: 30s
+    rules:
+      - alert: MDFNVENCSaturation
+        expr: nvenc_sessions_active / nvenc_sessions_max > 0.80
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "NVENC sessions > 80% of card limit on {{ $labels.pod }}"
+          description: |
+            A6000 supports a few concurrent NVENC sessions; we use it for
+            focused-instance high-quality streams. When saturated, the
+            recording plugin falls back to software h264 (CPU-heavier).
+          runbook: "docs/runbook.md#nvenc-saturation"

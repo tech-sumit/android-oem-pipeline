@@ -1,0 +1,19 @@
+groups:
+  - name: mdf-fleet
+    interval: 30s
+    rules:
+      - alert: MDFInstanceCountDegraded
+        expr: |
+          sum by (pod) (mdf_instances_total{status="ready"})
+            < (max by (pod) (mdf_warmpool_target) * 0.8)
+        for: 5m
+        labels:
+          severity: page
+          team: mdf
+        annotations:
+          summary: "MDF pod {{ $labels.pod }} has fewer than 80% of target instances ready"
+          description: |
+            Ready instances on pod {{ $labels.pod }} = {{ $value }},
+            target = {{ with query "max by (pod) (mdf_warmpool_target)" }}{{ . | first | value }}{{ end }}.
+            Likely causes: KVM exhausted, disk pressure, or qemu crash loop.
+          runbook: "docs/runbook.md#instance-count-degraded"

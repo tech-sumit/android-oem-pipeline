@@ -1,0 +1,21 @@
+groups:
+  - name: mdf-host
+    interval: 30s
+    rules:
+      - alert: MDFKSMDedupeLow
+        expr: |
+          (sum by (pod) (mdf_instances_total{status=~"ready|assigned"}) >= 100)
+          and
+          (
+            (node_ksm_pages_sharing / clamp_min(node_ksm_pages_total, 1)) < 0.30
+          )
+        for: 10m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "KSM dedupe < 30% on {{ $labels.pod }} (tier-100+)"
+          description: |
+            KSM is supposed to dedupe identical pages across the N qemu
+            instances; under 30% means we're losing the RAM win documented
+            in rev 5.1 §6.5.4. Check that ksmd is actually running and
+            scan rate is sufficient.
+          runbook: "docs/runbook.md#ksm-dedupe-low"

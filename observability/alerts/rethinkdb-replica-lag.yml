@@ -1,0 +1,14 @@
+groups:
+  - name: mdf-rethinkdb
+    interval: 30s
+    rules:
+      - alert: MDFRethinkDBReplicaLag
+        expr: max(rethinkdb_replica_lag_seconds) > 30
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "RethinkDB secondary replica lag > 30s"
+          description: |
+            HA failover may not be safe right now. Investigate network
+            between rethink-1/-2/-3, or disk IO on the slow secondary.
+          runbook: "docs/runbook.md#rethinkdb-replica-lag"

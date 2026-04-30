@@ -1,0 +1,15 @@
+groups:
+  - name: mdf-recording
+    interval: 30s
+    rules:
+      - alert: MDFRecordingR2Lag
+        expr: max by (pod) (mdf_r2_upload_lag_seconds{kind="recording"}) > 60
+        for: 5m
+        labels: { severity: warn, team: mdf }
+        annotations:
+          summary: "Recording R2 upload lag > 60s on {{ $labels.pod }}"
+          description: |
+            R2 upload backlog = {{ $value }}s. Capacity / network problem.
+            Check Cloudflare R2 status; the recordings remain on local disk
+            until upload succeeds (LRU evicts at 80% disk usage).
+          runbook: "docs/runbook.md#recording-r2-lag"
