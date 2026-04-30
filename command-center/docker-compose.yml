@@ -1,0 +1,56 @@
+# MDF dev stack -- single-pod, single-instance proof.
+#
+# Use this for the Phase 4 single-instance proof and Phase 4.5 perf
+# baseline runs. For the production stack with Cloudflare Tunnel +
+# Access + horizontal RethinkDB, see docker-compose.fleet.yml.
+
+name: mdf-dev
+
+services:
+  mdf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mdf:dev
+    container_name: mdf
+    hostname: mdf
+    restart: unless-stopped
+    privileged: true   # required for KVM passthrough on RunPod
+    ports:
+      - "8080:8080"   # nginx (STF + plugin UIs)
+      - "7100:7100"   # STF main app (debug)
+      - "7110:7110"   # STF websocket (debug)
+      - "7180:7180"   # MDF plugin REST (debug)
+      - "7185:7185"   # MDF h264 stream (debug)
+      - "28015:28015" # RethinkDB driver port (Phase 10 cluster)
+      - "29015:29015" # RethinkDB cluster port (Phase 10 cluster)
+    devices:
+      - "/dev/kvm:/dev/kvm"
+      - "/dev/net/tun:/dev/net/tun"
+    cap_add:
+      - NET_ADMIN
+      - SYS_NICE
+      - SYS_PTRACE
+      - SYS_RESOURCE
+    sysctls:
+      - net.core.somaxconn=1024
+      - net.ipv4.ip_local_port_range=10000 65535
+    shm_size: "8gb"
+    volumes:
+      - mdf_state:/var/lib/mdf
+      - mayaos_images:/srv/mayaos-images:ro
+      - ./templates:/opt/mdf/templates:ro
+    environment:
+      MDF_PUBLIC_IP: "127.0.0.1"
+      MDF_PROVIDER_NAME: "mdf-dev"
+      MDF_FLEET_SIZE: "1"
+      STF_AUTH_TYPE: "mock"
+      STF_DEFAULT_USER: "sumit"
+      STF_SECRET: "dev-secret-CHANGE-ME"
+      RETHINKDB_CANONICAL_ADDR: "mdf"
+      RETHINKDB_SERVER_NAME: "mdf-dev"
+
+volumes:
+  mdf_state:
+  mayaos_images:
+    external: false

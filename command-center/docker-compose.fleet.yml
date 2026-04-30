@@ -1,0 +1,102 @@
+# MDF production stack -- single A6000 pod, ~80 instances tuned (rev 5.1 §6).
+#
+# Differences from docker-compose.yml (dev):
+#   - Cloudflare Tunnel sidecar (mdf-tunnel) -- inbound HTTPS to Cloudflare
+#   - Cloudflare Access OIDC enforced at the edge (config in tunnel)
+#   - RethinkDB exposed only inside the docker network (no host port)
+#   - 3-replica RethinkDB cluster ready (rethink-1, rethink-2, rethink-3)
+#     for HA across pods (Phase 10); enabled via `--profile cluster`
+#   - hugepages mounted from host (must be configured: vm.nr_hugepages on pod)
+#   - cgroup v2 unified hierarchy expected (RunPod hosts default since 2024-11)
+
+name: mdf-fleet
+
+x-mdf-base: &mdf-base
+  image: mdf:fleet
+  privileged: true
+  restart: unless-stopped
+  cap_add: [NET_ADMIN, SYS_NICE, SYS_PTRACE, SYS_RESOURCE]
+  shm_size: "16gb"
+  devices:
+    - /dev/kvm:/dev/kvm
+    - /dev/net/tun:/dev/net/tun
+  sysctls:
+    - net.core.somaxconn=2048
+    - net.ipv4.ip_local_port_range=10000 65535
+
+services:
+  mdf:
+    <<: *mdf-base
+    container_name: mdf
+    hostname: mdf
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - mdf_state:/var/lib/mdf
+      - mayaos_images:/srv/mayaos-images:ro
+      - /dev/hugepages:/dev/hugepages
+    environment:
+      MDF_PUBLIC_IP: "${MDF_PUBLIC_IP:-127.0.0.1}"
+      MDF_PROVIDER_NAME: "${MDF_PROVIDER_NAME:-mdf-pod-0}"
+      MDF_FLEET_SIZE: "${MDF_FLEET_SIZE:-80}"
+      STF_AUTH_TYPE: "oidc"
+      STF_DEFAULT_USER: "${MDF_OPERATOR_EMAIL:-ops@mayaos.dev}"
+      STF_SECRET: "${STF_SECRET:?STF_SECRET must be set in .env}"
+      RETHINKDB_PORT_28015_TCP_ADDR: "rethink-1"
+      RETHINKDB_PORT_28015_TCP_PORT: "28015"
+      RETHINKDB_CANONICAL_ADDR: "mdf"
+      RETHINKDB_SERVER_NAME: "mdf-app"
+    depends_on: [rethink-1]
+    networks: [mdfnet]
+
+  mdf-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: mdf-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [mdfnet]
+
+  rethink-1:
+    image: rethinkdb:2.4
+    container_name: rethink-1
+    hostname: rethink-1
+    restart: unless-stopped
+    command: rethinkdb --bind all --no-update-check --server-name rethink-1 --canonical-address rethink-1
+    volumes:
+      - rethink_1:/data
+    networks: [mdfnet]
+
+  rethink-2:
+    image: rethinkdb:2.4
+    container_name: rethink-2
+    hostname: rethink-2
+    restart: unless-stopped
+    command: rethinkdb --bind all --no-update-check --server-name rethink-2 --canonical-address rethink-2 --join rethink-1:29015
+    volumes:
+      - rethink_2:/data
+    profiles: [cluster]
+    networks: [mdfnet]
+
+  rethink-3:
+    image: rethinkdb:2.4
+    container_name: rethink-3
+    hostname: rethink-3
+    restart: unless-stopped
+    command: rethinkdb --bind all --no-update-check --server-name rethink-3 --canonical-address rethink-3 --join rethink-1:29015
+    volumes:
+      - rethink_3:/data
+    profiles: [cluster]
+    networks: [mdfnet]
+
+volumes:
+  mdf_state:
+  mayaos_images:
+    external: true
+  rethink_1:
+  rethink_2:
+  rethink_3:
+
+networks:
+  mdfnet:
+    driver: bridge

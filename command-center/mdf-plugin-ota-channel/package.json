@@ -1,0 +1,16 @@
+{
+  "name": "mdf-plugin-ota-channel",
+  "version": "1.0.0",
+  "description": "MDF plugin: per-device OTA channel pin + push-to-device.",
+  "main": "index.js",
+  "scripts": { "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "rethinkdb": "^2.4.2",
+    "node-fetch": "^3.3.2",
+    "pino": "^9.4.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

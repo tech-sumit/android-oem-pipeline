@@ -1,0 +1,55 @@
+# MayaOS Galaxy S26 Ultra emulator config (rev 5.1).
+# Templated -- ${INSTANCE_ID} and ${SYSIMG_DIR} are substituted by
+# stf-provider-emulator's QemuInstance prior to spawn.
+
+avd.ini.encoding=UTF-8
+abi.type=x86_64
+hw.cpu.arch=x86_64
+hw.cpu.ncore=4
+hw.ramSize=1536
+
+PlayStore.enabled=false
+runtime.network.latency=none
+runtime.network.speed=full
+
+hw.gps=yes
+hw.gpu.enabled=yes
+hw.gpu.mode=host
+hw.audioInput=yes
+hw.audioOutput=yes
+hw.battery=yes
+hw.camera.back=virtualscene
+hw.camera.front=emulated
+hw.dPad=no
+hw.gsmModem=yes
+hw.keyboard=yes
+hw.lcd.density=560
+hw.lcd.height=3120
+hw.lcd.width=1440
+hw.mainKeys=no
+hw.sensors.orientation=yes
+hw.sensors.proximity=yes
+hw.trackBall=no
+
+image.androidVersion.api=36
+image.androidVersion.codename=
+image.sysdir.1=${SYSIMG_DIR}
+
+skin.dynamic=yes
+skin.name=1440x3120
+skin.path=_no_skin
+
+target=android-36
+tag.id=mayaos
+tag.display=MayaOS
+
+snapshot.present=yes
+fastboot.forceColdBoot=no
+
+vm.heapSize=384
+
+# §6.5.6 boot tunings -- mirrored in vendor/mayaos/mayaos.prop for the
+# guest, but emulator UI honors a small subset directly.
+showDeviceFrame=no
+hw.audioOutput=no
+disk.dataPartition.size=8192M

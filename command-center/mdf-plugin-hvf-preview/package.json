@@ -1,0 +1,16 @@
+{
+  "name": "mdf-plugin-hvf-preview",
+  "version": "1.0.0",
+  "description": "MDF plugin: handoff a single instance to a developer's Mac for HVF preview.",
+  "main": "index.js",
+  "scripts": { "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "rethinkdb": "^2.4.2",
+    "@aws-sdk/client-s3": "^3.620.1",
+    "pino": "^9.4.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

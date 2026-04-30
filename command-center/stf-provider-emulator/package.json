@@ -1,0 +1,29 @@
+{
+  "name": "stf-provider-emulator",
+  "version": "1.0.0",
+  "description": "MDF custom STF provider that boots qemu emulator instances and registers them as devices on STF's ZMQ bus.",
+  "main": "lib/provider.js",
+  "bin": {
+    "stf-provider-emulator": "bin/provider.js"
+  },
+  "scripts": {
+    "start": "node bin/provider.js",
+    "test": "node --test tests/*.test.js",
+    "lint": "node -c bin/provider.js && find lib tests -name '*.js' -exec node -c {} \\;"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "adbkit": "^3.2.6",
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "yargs": "^17.7.2",
+    "zeromq": "^6.1.0",
+    "rethinkdb": "^2.4.2",
+    "uuid": "^9.0.1",
+    "pino": "^9.4.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

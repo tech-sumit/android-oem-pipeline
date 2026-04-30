@@ -1,0 +1,17 @@
+{
+  "name": "mdf-plugin-recording",
+  "version": "1.0.0",
+  "description": "MDF plugin: multi-track recorder (screen + adb log + sensor + mitm).",
+  "main": "index.js",
+  "scripts": { "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "rethinkdb": "^2.4.2",
+    "@aws-sdk/client-s3": "^3.620.1",
+    "pino": "^9.4.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
