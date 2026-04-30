@@ -4,6 +4,7 @@
 *.pem.key
 ca/*.key
 ca/*-private*
+ca/.private/
 vast_api_key
 vast_api_key.txt
 runpod_api_key
@@ -43,3 +44,40 @@ logs/
 *.log
 tmp/
 .tmp/
+
+# --- Third-party clones (not submodules; each retains its own .git/) --------
+# `third_party/` is a working dropbox for upstream code we read but do not
+# vendor. Every dir inside has its own .git/ and is fetched on demand.
+third_party/
+
+# --- MDF runtime state (per-pod) --------------------------------------------
+mdf/.mdf_pod_id
+mdf/.last_provision
+
+# --- command-center node_modules / build artifacts --------------------------
+command-center/**/node_modules/
+command-center/**/dist/
+command-center/.local/
+
+# --- OTA local state --------------------------------------------------------
+ota/site/_redirects.local
+ota/.local/
+
+# --- perf-baseline raw captures ---------------------------------------------
+docs/perf-*.tsv
+
+# --- Python bytecode --------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# --- Cloudflare Wrangler / Workers ------------------------------------------
+.wrangler/
+wrangler-tail.log
+
+# --- generated keystores / signing -----------------------------------------
+*.keystore
+*.jks
+ota/keys/private/
+ota/.signing-cache/
