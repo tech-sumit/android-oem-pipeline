@@ -163,30 +163,46 @@ patch_trusty_stub_genrules() {
     fi
 }
 
-# 4. Cuttlefish's vsoc_x86_64 product auto-generates ro.product.<partition>.{device,name}
-#    from TARGET_DEVICE / TARGET_PRODUCT, and bakes ro.product.first_api_level=37
+# 4. Cuttlefish's vsoc_<arch> products auto-generate ro.product.<partition>.{device,name}
+#    from TARGET_DEVICE / TARGET_PRODUCT, and bake ro.product.first_api_level=37
 #    into PRODUCT_VENDOR_PROPERTIES. Our MayaOS device tree spoofs all three to
 #    Samsung-flavored values via PRODUCT_PROPERTY_OVERRIDES. AOSP's
 #    post_process_props rejects duplicate sysprop assignments by default, so
-#    enable BUILD_BROKEN_DUP_SYSPROP at the BoardConfig level. With --allow-dup,
-#    duplicates are written to build.prop in source order; Android init's
-#    last-write-wins behavior at runtime then resolves to our overrides.
+#    enable BUILD_BROKEN_DUP_SYSPROP at the BoardConfig level for EVERY board
+#    a MayaOS profile lunches. With --allow-dup, duplicates are written to
+#    build.prop in source order; Android init's last-write-wins behavior at
+#    runtime then resolves to our overrides.
 patch_board_dup_sysprop() {
-    local bc="${SRC_DIR}/device/google/cuttlefish/vsoc_x86_64/BoardConfig.mk"
     local marker="# mayaos: BUILD_BROKEN_DUP_SYSPROP for sysprop spoofing"
+    # Each MayaOS profile inherits from one of these vsoc_<arch> boards.
+    # Add new ones here when introducing a new lunch target architecture.
+    local boards=(
+        "${SRC_DIR}/device/google/cuttlefish/vsoc_x86_64/BoardConfig.mk"
+        "${SRC_DIR}/device/google/cuttlefish/vsoc_arm64/BoardConfig.mk"
+        "${SRC_DIR}/device/google/cuttlefish/vsoc_x86/BoardConfig.mk"
+        "${SRC_DIR}/device/google/cuttlefish/vsoc_riscv64/BoardConfig.mk"
+    )
 
-    [[ -f "$bc" ]] || { log_warn "  $bc missing; skipping dup-sysprop patch"; return 0; }
+    local bc patched=0 skipped=0 missing=0
+    for bc in "${boards[@]}"; do
+        if [[ ! -f "$bc" ]]; then
+            missing=$((missing + 1))
+            continue
+        fi
+        if grep -qF "$marker" "$bc"; then
+            log_info "  $(basename "$(dirname "$bc")")/BoardConfig.mk already has BUILD_BROKEN_DUP_SYSPROP, skipping"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        {
+            printf '\n%s\n' "$marker"
+            printf '%s\n' 'BUILD_BROKEN_DUP_SYSPROP := true'
+        } >> "$bc"
+        log_info "  patched $(basename "$(dirname "$bc")")/BoardConfig.mk: BUILD_BROKEN_DUP_SYSPROP := true"
+        patched=$((patched + 1))
+    done
 
-    if grep -qF "$marker" "$bc"; then
-        log_info "  BoardConfig.mk already has BUILD_BROKEN_DUP_SYSPROP, skipping"
-        return 0
-    fi
-
-    {
-        printf '\n%s\n' "$marker"
-        printf '%s\n' 'BUILD_BROKEN_DUP_SYSPROP := true'
-    } >> "$bc"
-    log_info "  patched BoardConfig.mk: BUILD_BROKEN_DUP_SYSPROP := true"
+    log_info "  dup-sysprop summary: patched=${patched} already=${skipped} not-present=${missing}"
 }
 
 log_info "after-sync: applying container-env workarounds"
