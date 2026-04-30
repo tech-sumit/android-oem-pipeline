@@ -1,0 +1,24 @@
+# Sample Cloudflare Tunnel config -- one tunnel per pod.
+# Created by terraform/main.tf via the cloudflare_tunnel resource;
+# this file documents the canonical layout.
+
+tunnel: ${MDF_TUNNEL_ID}
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: mdf-pod-${MDF_HOSTNAME}.mdf.mayaos.dev
+    service: http://localhost:8080
+    originRequest:
+      connectTimeout: 10s
+      tlsTimeout:     10s
+      noTLSVerify:    true     # in-pod nginx is plain http
+  - hostname: '*.mdf-pod-${MDF_HOSTNAME}.mdf.mayaos.dev'
+    service: http://localhost:8080
+  - service: http_status:404
+
+warp-routing:
+  enabled: false
+
+logfile: /var/log/cloudflared.log
+loglevel: info
+metrics: localhost:23000

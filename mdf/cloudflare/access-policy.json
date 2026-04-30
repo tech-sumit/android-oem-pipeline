@@ -1,0 +1,51 @@
+{
+  "$schema": "https://api.cloudflare.com/client/v4/accounts/{account_id}/access/apps",
+  "_comment": "Cloudflare Access self-hosted application + OIDC-via-Google policy. Apply via terraform mdf/terraform/main.tf access_application + access_policy resources.",
+
+  "application": {
+    "name":                  "MayaOS Device Farm",
+    "domain":                "*.mdf.mayaos.dev",
+    "type":                  "self_hosted",
+    "session_duration":      "24h",
+    "auto_redirect_to_identity": true,
+    "allowed_idps":          ["google-workspace"],
+    "cors_headers": {
+      "allowed_origins":     ["https://mdf.mayaos.dev"],
+      "allow_credentials":   true,
+      "allowed_headers":     ["authorization", "content-type", "cf-access-jwt-assertion"]
+    },
+    "service_auth_401_redirect": false,
+    "http_only_cookie_attribute": true
+  },
+
+  "policies": [
+    {
+      "name":     "mdf-operator",
+      "decision": "allow",
+      "include":  [
+        { "email": { "email": "sumit@mayaos.dev" } },
+        { "group": { "id":    "${ACCESS_GROUP_OPERATOR_ID}" } }
+      ],
+      "require":  [
+        { "auth_method": { "auth_method": "swk" } }
+      ],
+      "session_duration": "24h"
+    },
+    {
+      "name":     "mdf-viewer",
+      "decision": "allow",
+      "include":  [
+        { "group": { "id": "${ACCESS_GROUP_VIEWER_ID}" } }
+      ],
+      "require":  [
+        { "email_domain": { "domain": "mayaos.dev" } }
+      ],
+      "session_duration": "12h"
+    },
+    {
+      "name":     "deny-all-fallback",
+      "decision": "deny",
+      "include":  [{ "everyone": {} }]
+    }
+  ]
+}
