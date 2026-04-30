@@ -158,16 +158,17 @@ vm.heapSize=${GUEST_VM_HEAP}
 EOF
 
 # --- Launch. --------------------------------------------------------------
-# -no-snapshot-load: don't try to resume a snapshot that doesn't exist
-# -wipe-data:        re-format /data on first boot (otherwise zygote panics
-#                    because dalvik-cache and friends from a different image
-#                    are stale).
-# -accel hvf:        explicit HVF (auto-detect is reliable but be explicit).
-# -gpu host:         OpenGL ES via Apple Metal -> HVF guest. `swiftshader_indirect`
-#                    is the safe fallback if -gpu host doesn't work.
-# -netfast:          fast user-mode networking with port-forward.
-# -ports 6520,6521:  console on 6520 (telnet), adb on 6521 (since 6520 is used
-#                    by Cuttlefish convention; emulator pairs them).
+# -no-snapshot:       cold boot (no save/load); avoids snapshot-version mismatch
+#                     when we swap the system image underneath.
+# -no-boot-anim:      shave a few seconds off boot; we don't need bootanim.
+# -accel on:          enable hypervisor (HVF on macOS, KVM on Linux). Note: the
+#                     emulator binary's -accel flag accepts on/off/auto only --
+#                     '-accel hvf' is rejected as invalid.
+# -gpu host:          OpenGL ES via Apple Metal -> HVF guest. `swiftshader_indirect`
+#                     is the safe fallback if -gpu host doesn't work.
+# -netfast:           fast user-mode networking with port-forward.
+# -ports 5554,5555:   adb console on 5554, adb on 5555. Standard pair the
+#                     android-debug-bridge daemon scans by default.
 log
 log "launching emulator: AVD=${AVD_NAME}"
 log "  ANDROID_AVD_HOME=${AVD_HOME}"
@@ -177,11 +178,11 @@ ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
 ANDROID_AVD_HOME="$AVD_HOME" \
 exec "$EMULATOR_BIN" \
     -avd "$AVD_NAME" \
-    -accel hvf \
+    -accel on \
     -gpu "$GPU_MODE" \
-    -no-snapshot-load \
-    -wipe-data \
+    -no-snapshot \
+    -no-boot-anim \
     -netfast \
-    -ports 6520,6521 \
+    -ports 5554,5555 \
     -show-kernel \
     -verbose

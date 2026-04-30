@@ -28,7 +28,8 @@ REMOTE_OUT ?= /workspace/aosp-out
 	cuttlefish-adb cuttlefish-scrcpy cuttlefish-status \
 	qemu-up qemu-down qemu-adb qemu-scrcpy \
 	emulator-up emulator-down emulator-adb emulator-scrcpy \
-	runpod-emulator-fetch runpod-emulator-build \
+	runpod-emulator-fetch runpod-emulator-build runpod-emulator-watch \
+	stock-avd-create stock-emu-up stock-emu-wait stock-scrcpy stock-emu-down \
 	gh-secrets-list gh-secrets-check r2-check
 
 help: ## Show project commands
@@ -247,33 +248,82 @@ qemu-scrcpy: qemu-adb ## Launch scrcpy against the qemu-booted device
 # ---------------------------------------------------------------------------
 
 runpod-emulator-build: ## Kick a sdk_phone64_arm64 emulator-target build on the active pod
-	./runpod/ssh.sh 'cd /workspace/aosp-src && source build/envsetup.sh && \
-		lunch sdk_phone64_arm64-trunk_staging-userdebug && \
-		tmux new-window -t mayaos-build -n emulator -d \
-		"time m -j16 droid emu_img 2>&1 | tee /workspace/aosp-logs/mayaos-emulator.log"'
+	./runpod/ssh.sh 'tmux new-window -t mayaos-build -n emulator -d \
+		"cd /workspace/aosp-src && source build/envsetup.sh && \
+		 lunch sdk_phone64_arm64-trunk_staging-userdebug && \
+		 time m -j16 droid 2>&1 | tee /workspace/aosp-logs/mayaos-emulator.log; \
+		 echo BUILD_DONE; sleep 86400"'
+
+runpod-emulator-watch: ## Tail the emulator-build pane on the pod
+	@./runpod/ssh.sh 'tmux capture-pane -t mayaos-build:emulator -p | tail -30; \
+		echo; echo === out/emu64a ===; \
+		ls /workspace/aosp-src/out/target/product/emu64a/*.img 2>/dev/null | wc -l | xargs -I{} echo "  {} *.img produced"; \
+		ls /workspace/aosp-src/out/target/product/emu64a/ 2>/dev/null | head -20'
 
 runpod-emulator-fetch: ## Pull emulator-target artifacts (kernel-ranchu, system.img, ...) from the pod
 	@test -n "$(PROFILE)" || { echo "usage: make runpod-emulator-fetch PROFILE=<id>"; exit 1; }
-	mkdir -p out/latest/$(PROFILE)/emu
-	./runpod/ssh.sh 'ls -1 /workspace/aosp-src/out/target/product/emu64a/ 2>/dev/null | grep -E "kernel-ranchu|^(system|vendor|userdata|ramdisk|vbmeta).img$$|advancedFeatures.ini" || true'
+	@mkdir -p out/latest/$(PROFILE)/emu
 	@source runpod/common.sh && \
 		IFS=$$'\t' read -r user host port < <(current_pod_ssh) && \
-		rsync -azP -e "ssh -i $$(ssh_key_path) -p $$port -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" \
-			"$$user@$$host:/workspace/aosp-src/out/target/product/emu64a/{kernel-ranchu,system.img,vendor.img,userdata.img,ramdisk.img,vbmeta.img,advancedFeatures.ini}" \
-			out/latest/$(PROFILE)/emu/ 2>&1 | tail
+		for f in kernel-ranchu system.img vendor.img userdata.img ramdisk.img vbmeta.img advancedFeatures.ini; do \
+			rsync -azP --ignore-missing-args -e "ssh -i $$(ssh_key_path) -p $$port -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" \
+				"$$user@$$host:/workspace/aosp-src/out/target/product/emu64a/$$f" \
+				out/latest/$(PROFILE)/emu/ 2>&1 | tail -3; \
+		done
 
-emulator-up: ## Boot AOSP emulator AVD with PROFILE's images
+emulator-up: ## Boot AOSP emulator AVD with PROFILE's images (background; window+adb visible)
 	@test -n "$(PROFILE)" || { echo "usage: make emulator-up PROFILE=<id>"; exit 1; }
 	PROFILE="$(PROFILE)" ./docker/emulator/run.sh
 
 emulator-down: ## Kill the running emulator
-	@pkill -f "emulator.*-avd mayaos-" 2>/dev/null && echo "killed emulator" || echo "no emulator running"
+	@pkill -f "qemu-system-aarch64.*-avd mayaos-" 2>/dev/null && echo "killed emulator" || echo "no emulator running"
 
-emulator-adb: ## adb connect to the emulator (default port 6521)
-	@adb connect 127.0.0.1:6521
+emulator-adb: ## adb sees the emulator (default ports 5554/5555)
+	@adb devices | tail -n +2
 
-emulator-scrcpy: emulator-adb ## scrcpy mirror the emulator
-	@scrcpy -s 127.0.0.1:6521
+emulator-scrcpy: ## scrcpy mirror the booted emulator (uses emulator-5554)
+	@scrcpy --serial emulator-5554 --window-title='MayaOS' --max-fps=30 --max-size=1080
+
+# ---------------------------------------------------------------------------
+# Stock arm64 AVD demo. Uses Google-distributed system-images;android-36.1;
+# google_apis_playstore;arm64-v8a. Useful to (a) sanity-check the local
+# emulator+HVF+scrcpy stack before MayaOS images are ready, and (b) keep a
+# baseline AVD around for diffing behavior.
+# ---------------------------------------------------------------------------
+
+stock-avd-create: ## Create a baseline arm64 AVD (one-shot; idempotent)
+	@SDK="$$HOME/Library/Android/sdk"; \
+	export ANDROID_HOME="$$SDK" ANDROID_SDK_ROOT="$$SDK"; \
+	echo no | "$$SDK/cmdline-tools/latest/bin/avdmanager" create avd \
+		-n mayaos-stock \
+		-k 'system-images;android-36.1;google_apis_playstore;arm64-v8a' \
+		--force >/dev/null
+	@echo "created AVD: mayaos-stock"
+
+stock-emu-up: stock-avd-create ## Boot the stock baseline AVD in the background
+	@SDK="$$HOME/Library/Android/sdk"; \
+	mkdir -p /tmp/mayaos-emu; \
+	nohup "$$SDK/emulator/emulator" -avd mayaos-stock -accel on -gpu host \
+		-no-snapshot -no-boot-anim -netfast -ports 5554,5555 -verbose \
+		>/tmp/mayaos-emu/emu.log 2>&1 & \
+	echo $$! > /tmp/mayaos-emu/pid; \
+	echo "spawned PID $$(cat /tmp/mayaos-emu/pid); log: /tmp/mayaos-emu/emu.log"
+
+stock-emu-wait: ## Block until sys.boot_completed=1 (~30-60s on first boot)
+	@for i in $$(seq 1 60); do \
+		state=$$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | head -c1); \
+		if [ "$$state" = "1" ]; then echo "booted in ~$${i}x2s"; exit 0; fi; \
+		echo "[$${i}/60] booting..."; sleep 2; \
+	done; \
+	echo "timed out waiting for boot"; exit 1
+
+stock-scrcpy: ## scrcpy mirror the stock emulator
+	@scrcpy --serial emulator-5554 --window-title='MayaOS (stock arm64)' --max-fps=30 --max-size=1080
+
+stock-emu-down: ## Kill the stock emulator + its qemu-system-aarch64
+	@pkill -f 'emulator.*-avd mayaos-stock' 2>/dev/null || true
+	@pkill -f 'qemu-system-aarch64.*-avd mayaos-stock' 2>/dev/null || true
+	@echo "killed stock emulator"
 
 gh-secrets-list: ## List GitHub Actions secret names
 	gh secret list --repo "$(REPO)"
