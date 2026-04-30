@@ -2,87 +2,126 @@
 #
 # Phase 3: after repo sync, before lunch.
 #
-# Splices the MayaOS device tree (every profile under /srv/devicetree/mayaos/*)
-# into the freshly synced AOSP source at $SRC_DIR/device/mayaos/, then stages
-# every CA in /srv/cacerts into EACH profile's security/cacerts/ subdir with
-# the Android-style hashed filename.
+# Splices the MayaOS Waydroid-style layered tree into the freshly synced
+# AOSP source. Three layers, three mounts:
 #
-# /srv/devicetree (host bind mount) is treated as authoritative -- we wipe
-# device/mayaos in the AOSP tree and copy fresh on every build so a
-# `git status` inside AOSP is always clean except for our overlay.
+#   /srv/aosp-tree/device/mayaos/    -> $SRC_DIR/device/mayaos/
+#   /srv/aosp-tree/hardware/mayaos/  -> $SRC_DIR/hardware/mayaos/
+#   /srv/aosp-tree/vendor/mayaos/    -> $SRC_DIR/vendor/mayaos/
+#   /srv/aosp-tree/packages/apps/MayaOSUpdater/ (if present)
+#                                    -> $SRC_DIR/packages/apps/MayaOSUpdater/
+#
+# /srv/aosp-tree (host bind mount) is treated as authoritative -- we wipe the
+# splice targets and copy fresh on every build so a `git status` inside AOSP
+# is always clean except for our overlay.
+#
+# Then stages every CA in /srv/cacerts into vendor/mayaos/rootdir/system/etc/
+# security/cacerts/ with the Android-style hashed filename. (Rev 5: CAs live
+# on the vendor partition, see plan §3 decision (d).)
 #
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "/opt/pipeline/lib.sh"
 
-DEVICE_DST="${SRC_DIR}/device/mayaos"
+# ---- Paths -----------------------------------------------------------------
+AOSPTREE_DIR="${AOSPTREE_DIR:-/srv/aosp-tree}"
 
-log_info "after-sync: splicing MayaOS device tree into AOSP source"
+splice_layer() {
+    local layer="$1"   # "device" | "hardware" | "vendor"
+    local src="${AOSPTREE_DIR}/${layer}/mayaos"
+    local dst="${SRC_DIR}/${layer}/mayaos"
 
-if [[ ! -d "$DEVICETREE_DIR/mayaos" ]]; then
-    log_error "expected $DEVICETREE_DIR/mayaos to be bind-mounted; not found"
+    if [[ ! -d "$src" ]]; then
+        log_info "  layer ${layer}: no ${src} present, skipping"
+        return 0
+    fi
+
+    rm -rf "$dst"
+    mkdir -p "$(dirname "$dst")"
+    cp -a "$src" "$dst"
+    log_info "  layer ${layer}: spliced ${src} -> ${dst}"
+}
+
+splice_packages_apps() {
+    local src="${AOSPTREE_DIR}/packages/apps"
+    local dst="${SRC_DIR}/packages/apps"
+
+    [[ -d "$src" ]] || { log_info "  packages/apps: nothing to splice"; return 0; }
+
+    shopt -s nullglob
+    for app_dir in "$src"/*/; do
+        local app_name
+        app_name="$(basename "$app_dir")"
+        local app_dst="${dst}/${app_name}"
+        rm -rf "$app_dst"
+        mkdir -p "$dst"
+        cp -a "$app_dir" "$app_dst"
+        log_info "  packages/apps/${app_name}: spliced"
+    done
+    shopt -u nullglob
+}
+
+# ---- Splice the 3+1 layers ------------------------------------------------
+log_info "after-sync: splicing MayaOS Waydroid-style layered tree into AOSP source"
+
+if [[ ! -d "$AOSPTREE_DIR" ]]; then
+    log_error "expected ${AOSPTREE_DIR} to be bind-mounted; not found"
     exit 1
 fi
 
-# Refresh the device tree overlay.
-rm -rf "$DEVICE_DST"
-mkdir -p "$(dirname "$DEVICE_DST")"
-cp -a "$DEVICETREE_DIR/mayaos" "$DEVICE_DST"
-log_info "  copied $DEVICETREE_DIR/mayaos -> $DEVICE_DST"
+splice_layer device
+splice_layer hardware
+splice_layer vendor
+splice_packages_apps
 
-# Stage CAs into every profile's security/cacerts dir. We discover profiles
-# by globbing the device tree -- this avoids tying the after-sync hook to the
-# yaml schema and means new profiles "just work" once their dir is created.
-shopt -s nullglob
-ca_count=0
-for profile_dir in "$DEVICE_DST"/*/; do
-    [[ -d "$profile_dir" ]] || continue
-    profile_id="$(basename "$profile_dir")"
-    cacert_dst="${profile_dir}security/cacerts"
+# ---- Stage CAs into vendor/mayaos/rootdir/.../cacerts ---------------------
+# A single shared dir on the vendor partition (one entry per CA, picked up
+# by vendor/mayaos/product.mk's PRODUCT_COPY_FILES wildcard).
+stage_ca_certs() {
+    local cacert_dst="${SRC_DIR}/vendor/mayaos/rootdir/system/etc/security/cacerts"
     mkdir -p "$cacert_dst"
 
-    # Hash + copy *.pem.
+    shopt -s nullglob
+    local ca_count=0
+
     for pem in "$CACERTS_DIR"/*.pem; do
+        local fname
         fname="$(cert_hash_filename "$pem")"
         cp "$pem" "${cacert_dst}/${fname}"
         ca_count=$((ca_count + 1))
-        log_info "  ${profile_id}: staged $(basename "$pem") -> ${fname}"
+        log_info "  staged $(basename "$pem") -> ${cacert_dst#"$SRC_DIR/"}/${fname}"
     done
 
-    # Accept already-hashed certs (gen-demo-ca.sh drops *.0 directly).
     for hashed in "$CACERTS_DIR"/*.0; do
         cp "$hashed" "${cacert_dst}/$(basename "$hashed")"
         ca_count=$((ca_count + 1))
-        log_info "  ${profile_id}: staged $(basename "$hashed") (pre-hashed)"
+        log_info "  staged $(basename "$hashed") (pre-hashed)"
     done
-done
-shopt -u nullglob
+    shopt -u nullglob
 
-if [[ "$ca_count" -eq 0 ]]; then
-    log_warn "no CAs found in ${CACERTS_DIR}; builds will use whatever is" \
-             "already committed under each profile's security/cacerts/"
-else
-    log_info "  staged ${ca_count} CA cert(s) across all profiles"
-fi
+    if [[ "$ca_count" -eq 0 ]]; then
+        log_warn "no CAs found in ${CACERTS_DIR}; builds use whatever is committed"
+    else
+        log_info "  staged ${ca_count} CA cert(s) into ${cacert_dst#"$SRC_DIR/"}/"
+    fi
+}
 
-# Sanity: at least one AndroidProducts.mk must be visible.
+stage_ca_certs
+
+# ---- Sanity: at least one AndroidProducts.mk must be visible --------------
 if ! find "${SRC_DIR}/device/mayaos" -maxdepth 3 -name AndroidProducts.mk \
         | grep -q .; then
     log_error "no AndroidProducts.mk found under device/mayaos/; aborting"
     exit 1
 fi
 
-# ---- Container-environment workarounds for Android 16 (trunk_staging) ----
+# ---- Container-environment workarounds for Android 16 (trunk_staging) -----
 # Most managed Docker hosts (RunPod / Vast / GitHub Actions / GitLab Cloud)
 # strip CAP_SYS_ADMIN from the container and the kernel then rejects every
 # CLONE_NEW* flag. AOSP's `nsjail`-wrapped genrules can't run there, and a
 # few specific genrules (notably `trusty_security_vm_*.elf`) fail outright.
-# Two fixes below are idempotent and safe to apply unconditionally.
 
-# 1. Replace the prebuilt nsjail with a Python "fakejail" that materializes
-#    -B/-R bind mounts as symlinks inside the sandbox dir and execs the
-#    inner command directly. We swap only when the kernel actually rejects
-#    user namespaces; otherwise leave the real nsjail in place.
+# 1. Replace the prebuilt nsjail with a Python "fakejail".
 maybe_install_fakejail() {
     local nsjail="${SRC_DIR}/prebuilts/build-tools/linux-x86/bin/nsjail"
     [[ -x "$nsjail" ]] || return 0
@@ -109,11 +148,7 @@ maybe_install_fakejail() {
     log_info "  installed fakejail (CLONE_NEW* denied; namespaces bypassed)"
 }
 
-# 2. Trusty's build.py invokes `nice` unconditionally unless `--no-nice` is
-#    passed -- but the Soong genrule wrapping it doesn't pass that flag and
-#    AOSP's restricted PATH (`build-tools/path/linux-x86`) rejects host
-#    `nice`. Force the python source to omit nice; soong rebuilds the
-#    `build_trusty` PEX from this source, so the patch propagates.
+# 2. Trusty's build.py invokes `nice` unconditionally unless `--no-nice`.
 patch_trusty_no_nice() {
     local bp="${SRC_DIR}/trusty/vendor/google/aosp/scripts/build.py"
     [[ -f "$bp" ]] || return 0
@@ -134,16 +169,7 @@ patch_trusty_no_nice() {
     log_info "  patched trusty build.py: forced nice=\"\""
 }
 
-# 3. Even with nsjail working, the Trusty TEE-VM build for the custom Rust
-#    target `x86_64-unknown-trusty-kernel` fails with E0463 ("can't find
-#    crate for `core`") because prebuilts/rust ships no precompiled `core`
-#    rlib for that target. The Soong genrules in
-#    trusty/vendor/google/aosp/scripts/Android.bp are not on our critical
-#    path -- they produce TEE simulator VMs only used by Cuttlefish for
-#    trusted-HAL emulation, which we do not exercise. Replace their shared
-#    cmd template with a stub that emits an ELF-magic-prefixed marker
-#    file. Soong's dependency graph stays intact; the rest of the build
-#    proceeds.
+# 3. Trusty TEE-VM genrules need a stub for the missing rust core rlib.
 patch_trusty_stub_genrules() {
     local script="/opt/pipeline/hooks/files/stub-trusty-genrules.py"
     local bp="${SRC_DIR}/trusty/vendor/google/aosp/scripts/Android.bp"
@@ -163,25 +189,13 @@ patch_trusty_stub_genrules() {
     fi
 }
 
-# 4. Cuttlefish's vsoc_<arch> products auto-generate ro.product.<partition>.{device,name}
-#    from TARGET_DEVICE / TARGET_PRODUCT, and bake ro.product.first_api_level=37
-#    into PRODUCT_VENDOR_PROPERTIES. Our MayaOS device tree spoofs all three to
-#    Samsung-flavored values via PRODUCT_PROPERTY_OVERRIDES. AOSP's
-#    post_process_props rejects duplicate sysprop assignments by default, so
-#    enable BUILD_BROKEN_DUP_SYSPROP at the BoardConfig level for EVERY board
-#    a MayaOS profile lunches. With --allow-dup, duplicates are written to
-#    build.prop in source order; Android init's last-write-wins behavior at
-#    runtime then resolves to our overrides.
+# 4. BUILD_BROKEN_DUP_SYSPROP. Rev 5 keeps this as a safety net for boards
+# we haven't enumerated under vendor/mayaos/BoardConfigExtra.mk yet.
 patch_board_dup_sysprop() {
     local marker="# mayaos: BUILD_BROKEN_DUP_SYSPROP for sysprop spoofing"
     # Each MayaOS profile inherits from one of these boards.
-    #   vsoc_*  -- cuttlefish profiles (mayaos_cf_s26ultra*).
-    #   emu*    -- AOSP SDK phone targets used by the Android Studio Emulator
-    #              profile (mayaos_emu_s26ultra). emu64a is the device dir for
-    #              sdk_phone64_arm64; live under build/make/target/board/ in
-    #              modern AOSP. Older branches sometimes have them at
-    #              device/generic/<arch>/. We try both.
-    # Add new ones here when introducing a new lunch target architecture.
+    #   vsoc_*  -- cuttlefish profiles (mayaos_cf_s26ultra*)
+    #   emu*    -- AOSP SDK phone targets used by the emulator profiles
     local boards=(
         "${SRC_DIR}/device/google/cuttlefish/vsoc_x86_64/BoardConfig.mk"
         "${SRC_DIR}/device/google/cuttlefish/vsoc_arm64/BoardConfig.mk"

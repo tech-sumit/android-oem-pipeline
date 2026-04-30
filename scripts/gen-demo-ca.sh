@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # Generate a self-signed demo root CA for first-run convenience. The PUBLIC
-# PEM is staged into ca/ and into device-tree/.../security/cacerts/. The
-# PRIVATE KEY is written next to it but is gitignored; you should delete it
-# unless you intend to issue leaf certs from this demo CA.
+# PEM is staged into ca/ and into aosp-tree/vendor/mayaos/rootdir/system/etc/
+# security/cacerts/ (rev 5+ vendor partition path). The PRIVATE KEY is
+# written next to it but is gitignored; you should delete it unless you
+# intend to issue leaf certs from this demo CA.
 #
 # Usage:
 #   ./scripts/gen-demo-ca.sh [-o ca/]
@@ -12,9 +13,9 @@ set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${1:-${REPO_ROOT}/ca}"
-DEVICE_CACERTS="${REPO_ROOT}/device-tree/mayaos/galaxy-s26-ultra/security/cacerts"
+VENDOR_CACERTS="${REPO_ROOT}/aosp-tree/vendor/mayaos/rootdir/system/etc/security/cacerts"
 
-mkdir -p "$OUT_DIR" "$DEVICE_CACERTS"
+mkdir -p "$OUT_DIR" "$VENDOR_CACERTS"
 cd "$OUT_DIR"
 
 KEY="mayaos-root-ca.key"
@@ -39,12 +40,12 @@ SUBJECT_HASH=$(openssl x509 -in "$PEM" -noout -subject_hash_old)
 HASHED="${SUBJECT_HASH}.0"
 
 cp "$PEM" "$HASHED"
-cp "$PEM" "${DEVICE_CACERTS}/${HASHED}"
+cp "$PEM" "${VENDOR_CACERTS}/${HASHED}"
 
 echo
 echo "[gen-demo-ca] wrote:"
 echo "  ${OUT_DIR}/${PEM}"
 echo "  ${OUT_DIR}/${HASHED}                (Android-style filename)"
-echo "  ${DEVICE_CACERTS}/${HASHED}         (staged into device tree)"
+echo "  ${VENDOR_CACERTS}/${HASHED}         (staged into vendor partition)"
 echo
 echo "Private key: ${OUT_DIR}/${KEY}  (NOT committed; delete if you don't need it)"

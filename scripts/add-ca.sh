@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Add a real root CA to the build. Stages it into both ca/ (so it ships in
-# git history) and device-tree/.../security/cacerts/ (so PRODUCT_COPY_FILES
-# picks it up).
+# git history) and aosp-tree/vendor/mayaos/rootdir/system/etc/security/
+# cacerts/ (so PRODUCT_COPY_FILES picks it up via the wildcard in
+# vendor/mayaos/product.mk).
 #
 # Usage:
 #   ./scripts/add-ca.sh /path/to/your-root.pem
@@ -14,7 +15,7 @@ set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CA_DIR="${REPO_ROOT}/ca"
-DEVICE_CACERTS="${REPO_ROOT}/device-tree/mayaos/galaxy-s26-ultra/security/cacerts"
+VENDOR_CACERTS="${REPO_ROOT}/aosp-tree/vendor/mayaos/rootdir/system/etc/security/cacerts"
 
 src="${1:-}"
 [[ -n "$src" && -f "$src" ]] || { echo "usage: $0 <path-to-pem>" >&2; exit 2; }
@@ -29,19 +30,19 @@ if ! openssl x509 -in "$src" -noout 2>/dev/null; then
     exit 1
 fi
 
-mkdir -p "$CA_DIR" "$DEVICE_CACERTS"
+mkdir -p "$CA_DIR" "$VENDOR_CACERTS"
 
 # Compute Android-style hashed filename.
 hash=$(openssl x509 -in "$src" -noout -subject_hash_old)
 hashed="${hash}.0"
 
 # Idempotent: warn if an existing CA shares the same hash.
-if [[ -f "${DEVICE_CACERTS}/${hashed}" ]]; then
-    if cmp -s "$src" "${DEVICE_CACERTS}/${hashed}"; then
+if [[ -f "${VENDOR_CACERTS}/${hashed}" ]]; then
+    if cmp -s "$src" "${VENDOR_CACERTS}/${hashed}"; then
         echo "[add-ca] ${hashed} already present (identical content); nothing to do."
         exit 0
     fi
-    echo "WARNING: ${DEVICE_CACERTS}/${hashed} exists with different content. Overwriting." >&2
+    echo "WARNING: ${VENDOR_CACERTS}/${hashed} exists with different content. Overwriting." >&2
 fi
 
 # Use the certificate's CN as a friendly stem for the staged-into-ca/ filename.
@@ -51,12 +52,12 @@ cn=$(openssl x509 -in "$src" -noout -subject -nameopt RFC2253 \
 
 cp "$src" "${CA_DIR}/${cn}.pem"
 cp "$src" "${CA_DIR}/${hashed}"
-cp "$src" "${DEVICE_CACERTS}/${hashed}"
+cp "$src" "${VENDOR_CACERTS}/${hashed}"
 
 echo "[add-ca] staged:"
 echo "  ${CA_DIR}/${cn}.pem"
 echo "  ${CA_DIR}/${hashed}"
-echo "  ${DEVICE_CACERTS}/${hashed}"
+echo "  ${VENDOR_CACERTS}/${hashed}"
 echo
 echo "Cert summary:"
 openssl x509 -in "$src" -noout -subject -issuer -dates -fingerprint -sha256

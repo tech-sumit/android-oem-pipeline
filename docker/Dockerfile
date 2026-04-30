@@ -92,7 +92,7 @@ ENV SRC_DIR=/srv/src \
     KEYS_DIR=/srv/keys \
     LOGS_DIR=/srv/logs \
     LMANIFEST_DIR=/srv/local_manifests \
-    DEVICETREE_DIR=/srv/devicetree \
+    AOSPTREE_DIR=/srv/aosp-tree \
     CACERTS_DIR=/srv/cacerts \
     CONFIG_DIR=/srv/config \
     CONFIG_FILE=/srv/config/mayaos.yaml
@@ -102,10 +102,10 @@ ENV SRC_DIR=/srv/src \
 # so the build root resolves it as $SRC_DIR/$OUT_DIR (i.e. /srv/src/out).
 RUN install -d -o build -g build \
         "$SRC_DIR" "$CCACHE_DIR" "$SRC_DIR/$OUT_DIR" "$KEYS_DIR" "$LOGS_DIR" \
-        "$LMANIFEST_DIR" "$DEVICETREE_DIR" "$CACERTS_DIR" "$CONFIG_DIR"
+        "$LMANIFEST_DIR" "$AOSPTREE_DIR" "$CACERTS_DIR" "$CONFIG_DIR"
 
 VOLUME ["/srv/src", "/srv/ccache", "/srv/src/out", "/srv/keys", "/srv/logs", \
-        "/srv/local_manifests", "/srv/devicetree", "/srv/cacerts", "/srv/config"]
+        "/srv/local_manifests", "/srv/aosp-tree", "/srv/cacerts", "/srv/config"]
 
 # ---------------------------------------------------------------------------
 # Pipeline scripts. init.sh is the entrypoint; hooks/ are sourced at the

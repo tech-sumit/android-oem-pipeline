@@ -117,7 +117,7 @@ env \\
     KEYS_DIR='/workspace/aosp-keys' \\
     LOGS_DIR='/workspace/aosp-logs' \\
     LMANIFEST_DIR="\${REMOTE_DIR}/manifests" \\
-    DEVICETREE_DIR="\${REMOTE_DIR}/device-tree" \\
+    AOSPTREE_DIR="\${REMOTE_DIR}/aosp-tree" \\
     CACERTS_DIR="\${REMOTE_DIR}/ca" \\
     CONFIG_DIR="\${REMOTE_DIR}" \\
     CONFIG_FILE="\${REMOTE_DIR}/mayaos.yaml" \\

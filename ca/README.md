@@ -17,9 +17,10 @@ Public CA certificates that get baked into the built MayaOS image.
 ```
 
 That script computes the Android `subject_hash_old` filename and stages the
-PEM into `device-tree/mayaos/galaxy-s26-ultra/security/cacerts/<hash>.0`. The
-build picks it up automatically via `mayaos_cf_s26ultra.mk`'s
-`PRODUCT_COPY_FILES` directive.
+PEM into `aosp-tree/vendor/mayaos/rootdir/system/etc/security/cacerts/<hash>.0`
+(rev-5 vendor-partition path; was `device-tree/mayaos/.../security/cacerts/`).
+The build picks it up automatically via the `MAYAOS_VENDOR_CA_FILES`
+wildcard in `aosp-tree/vendor/mayaos/product.mk`.
 
 ## Verifying which CAs ended up in a built image
 

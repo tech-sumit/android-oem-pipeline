@@ -108,7 +108,7 @@ ssh_into_instance "cd ${REMOTE_DIR} && \
         -v /workspace/aosp-src/out:/srv/src/out \
         -v /workspace/aosp-keys:/srv/keys \
         -v /workspace/aosp-logs:/srv/logs \
-        -v ${REMOTE_DIR}/device-tree:/srv/devicetree:ro \
+        -v ${REMOTE_DIR}/aosp-tree:/srv/aosp-tree:ro \
         -v ${REMOTE_DIR}/ca:/srv/cacerts:ro \
         -v ${REMOTE_DIR}/manifests:/srv/local_manifests:ro \
         -v ${REMOTE_DIR}/mayaos.yaml:/srv/config/mayaos.yaml:ro \

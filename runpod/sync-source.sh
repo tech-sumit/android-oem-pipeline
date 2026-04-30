@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# rsync this repository (Dockerfile + pipeline + device-tree + ca + manifests)
+# rsync this repository (Dockerfile + pipeline + aosp-tree + ca + manifests)
 # to the active RunPod pod under /workspace/android-oem-pipeline.
 #
 # Excludes mirror runpod/sync-source.sh's vast/ counterpart -- both backends

@@ -24,7 +24,7 @@ flowchart LR
         Repo[tech-sumit/android-oem-pipeline]
         Cfg --> Repo
         Repo --> CA[ca/ - public PEMs]
-        Repo --> DT[device-tree/mayaos/galaxy-s26-ultra]
+        Repo --> DT[aosp-tree/ - 3-layer Waydroid split]
         Repo --> DF[docker/Dockerfile]
         Repo --> Vast[vast/*.sh]
     end
@@ -101,7 +101,7 @@ AOSP source is ~250 GB compressed. Vendoring it in git is impractical and pointl
 The pipeline repo therefore tracks only:
 
 - The build container definition (`docker/Dockerfile`).
-- The OEM device tree (`device-tree/mayaos/galaxy-s26-ultra/`).
+- The OEM device tree (`aosp-tree/{device,hardware,vendor}/mayaos/`).
 - Public CAs to bake (`ca/`).
 - Orchestration scripts (`pipeline/`, `vast/`, `scripts/`).
 - Docs.

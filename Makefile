@@ -12,7 +12,16 @@ TMUX_SESSION ?= mayaos-build
 REMOTE_LOG ?= /workspace/aosp-logs/mayaos-build.log
 REMOTE_OUT ?= /workspace/aosp-out
 
-.PHONY: help doctor validate status secrets \
+.PHONY: help doctor validate status secrets mdf-ca-generate mdf-ca-vault \
+	mdf-submodule-add mdf-submodule-update mdf-build mdf-dev-up mdf-dev-down \
+	mdf-fleet-up mdf-fleet-down mdf-logs mdf-shell mdf-status \
+	mdf-perf-baseline mdf-snapshot mdf-restore \
+	mdf-ota-append mdf-ota-promote \
+	mdf-provision mdf-destroy mdf-rotate-ca mdf-cloudflared-up mdf-cloudflared-down \
+	mdf-tf-init mdf-tf-plan mdf-tf-apply \
+	mdf-observability-lint mdf-observability-push mdf-observability-push-dashboards \
+	mdf-observability-push-alerts \
+	mdf-ha-setup mdf-ha-drill \
 	docker-build docker-run \
 	vast-search vast-provision vast-auto-provision vast-sync \
 	vast-build vast-build-direct vast-build-tmux vast-orchestrate \
@@ -47,7 +56,7 @@ doctor: ## Check local tools and Vast.ai auth state
 
 validate: ## Run local syntax, XML, and MayaOS profile checks
 	@bash -n vast/*.sh runpod/*.sh pipeline/*.sh pipeline/hooks/*.sh scripts/*.sh \
-		device-tree/mayaos/galaxy-s26-ultra/vendor/bin/mayaos-command-exec
+		aosp-tree/vendor/mayaos/bin/mayaos-command-exec
 	@python3 scripts/validate-mayaos.py
 
 status: ## Show local git state and active Vast instance
@@ -57,6 +66,140 @@ status: ## Show local git state and active Vast instance
 	@vastai show instances --raw | python3 -c 'import json,sys; data=json.load(sys.stdin); [print("{}: {} {}".format(i.get("id") or i.get("contract_id"), i.get("label"), i.get("actual_status"))) for i in data]' || true
 
 secrets: gh-secrets-check ## Check required GitHub secrets
+
+mdf-ca-generate: ## Generate the MayaOS Device Farm root CA (10-year RSA-4096) and stage into vendor/mayaos/
+	@./scripts/gen-mdf-root-ca.sh
+
+mdf-ca-vault: ## Print the Vault command to push the generated MDF CA private key
+	@./scripts/gen-mdf-root-ca.sh --vault-only
+
+mdf-submodule-add: ## One-time: add DeviceFarmer/stf as the command-center/stf submodule
+	@if [ -d command-center/stf/.git ] || [ -f command-center/stf/.git ]; then \
+		echo "==> command-center/stf already a submodule; skipping"; \
+	else \
+		git submodule add -b master https://github.com/DeviceFarmer/stf command-center/stf; \
+	fi
+
+mdf-submodule-update: ## Sync command-center/stf to the pin recorded in stf-version
+	@PIN=$$(awk -F= '$$1=="sha"{print $$2}' command-center/stf-version | tr -d '[:space:]'); \
+	echo "==> checking out STF @ $$PIN"; \
+	git -C command-center/stf fetch --all --tags; \
+	git -C command-center/stf checkout "$$PIN"
+
+mdf-build: ## Build the unified MDF container image (mdf:dev)
+	@cd command-center && docker compose -f docker-compose.yml build
+
+mdf-dev-up: ## Phase 4 single-instance dev stack (rethinkdb + stf + 1 emulator)
+	@cd command-center && docker compose -f docker-compose.yml up -d
+	@echo "==> open http://localhost:8080 -- you should see one device after ~60s"
+
+mdf-dev-down: ## Stop the dev stack
+	@cd command-center && docker compose -f docker-compose.yml down
+
+mdf-fleet-up: ## Production fleet stack (Cloudflare Tunnel + RethinkDB cluster)
+	@cd command-center && docker compose -f docker-compose.fleet.yml up -d
+
+mdf-fleet-down: ## Stop the production fleet stack
+	@cd command-center && docker compose -f docker-compose.fleet.yml down
+
+mdf-logs: ## Tail MDF container logs (SVC=mdf|rethink-1|mdf-tunnel)
+	@cd command-center && docker compose -f docker-compose.yml logs -f $(SVC)
+
+mdf-shell: ## Open a shell inside the running MDF container
+	@cd command-center && docker compose -f docker-compose.yml exec mdf /bin/bash
+
+mdf-status: ## Show fleet status across all provisioned pods
+	@bash mdf/scripts/mdf-status.sh
+
+mdf-pod-status: ## Show in-pod supervisord status (run from a single pod)
+	@cd command-center && docker compose -f docker-compose.yml exec mdf supervisorctl status
+
+mdf-perf-baseline: ## Phase 4.5: collect docs/perf-baseline-rev5.1.md numbers
+	@cd command-center && bash perf/run-baseline.sh
+
+mdf-perf-density: ## Phase 7: ramp 10 -> 100 -> 250 instances + record TSV
+	@cd command-center && bash perf/density-test.sh
+
+mdf-perf-parallel-boot: ## Helper: parallel-boot N=100 BATCH=10 instances; print boot p99
+	@cd command-center && N=$(or $(N),100) BATCH=$(or $(BATCH),10) bash perf/parallel-boot.sh
+
+mdf-snapshot: ## Snapshot the running mdf-pod-0-001 instance to "warm" QMP slot
+	@cd command-center && docker compose -f docker-compose.yml exec mdf \
+		curl -s -XPOST http://127.0.0.1:7180/mdf/warmpool/snapshot \
+		-H 'Content-Type: application/json' \
+		-d '{"serial":"emulator-5554","name":"warm"}'
+
+mdf-restore: ## Restore mdf-pod-0-001 from "warm" snapshot
+	@cd command-center && docker compose -f docker-compose.yml exec mdf \
+		curl -s -XPOST http://127.0.0.1:7180/mdf/warmpool/restore \
+		-H 'Content-Type: application/json' \
+		-d '{"serial":"emulator-5554","name":"warm"}'
+
+mdf-ota-append: ## Append a build to a channel: CHANNEL=canary BUILD_ID=16-r6-rc1 ARTIFACT_DIR=...
+	@if [ -z "$(CHANNEL)" ] || [ -z "$(BUILD_ID)" ] || [ -z "$(ARTIFACT_DIR)" ]; then \
+		echo "usage: make mdf-ota-append CHANNEL=canary BUILD_ID=16-r6-rc1 ARTIFACT_DIR=out/..."; exit 1; \
+	fi
+	python3 ota/tools/append.py --channel $(CHANNEL) --build-id $(BUILD_ID) \
+		--profile $(or $(PROFILE),galaxy-s26-ultra-emulator-x86) \
+		--artifact-dir $(ARTIFACT_DIR) --notes "$(NOTES)"
+
+mdf-ota-promote: ## Promote a build between channels: SRC=canary DST=stable BUILD=16-r6-rc1
+	@if [ -z "$(SRC)" ] || [ -z "$(DST)" ] || [ -z "$(BUILD)" ]; then \
+		echo "usage: make mdf-ota-promote SRC=canary DST=stable BUILD=16-r6-rc1"; exit 1; \
+	fi
+	python3 ota/tools/promote.py --from $(SRC) --to $(DST) --build $(BUILD)
+
+# ---- Phase 8: provisioning + edge ----------------------------------------
+mdf-tf-init: ## terraform init for the MDF infra
+	cd mdf/terraform && terraform init -upgrade
+
+mdf-tf-plan: ## terraform plan for the MDF infra
+	cd mdf/terraform && terraform plan
+
+mdf-tf-apply: ## terraform apply for the MDF infra
+	cd mdf/terraform && terraform apply
+
+mdf-provision: ## End-to-end fleet provisioning (terraform + sync + compose up)
+	@bash mdf/scripts/mdf-provision.sh
+
+mdf-destroy: ## Snapshot RethinkDB, compose down, terraform destroy
+	@bash mdf/scripts/mdf-destroy.sh
+
+mdf-rotate-ca: ## Generate a fresh MDF root CA (deprecation window 90d)
+	@bash mdf/scripts/mdf-rotate-ca.sh
+
+mdf-cloudflared-up: ## Bring up a local cloudflared (TUNNEL_TOKEN=...)
+	@ACTION=up bash mdf/scripts/mdf-cloudflared.sh
+
+mdf-cloudflared-down: ## Stop the local cloudflared
+	@ACTION=down bash mdf/scripts/mdf-cloudflared.sh
+
+# ---- Phase 9: observability ----------------------------------------------
+mdf-observability-lint: ## Lint dashboards + alerts
+	@bash observability/scripts/lint-dashboards.sh
+	@for f in observability/alerts/*.yml; do yq -e '.groups[0].rules[0].alert' "$$f" > /dev/null || exit 1; done
+	@echo "ok: observability lint clean"
+
+mdf-observability-push-dashboards: ## Push dashboards to Grafana Cloud
+	@bash observability/scripts/push-dashboards.sh
+
+mdf-observability-push-alerts: ## Push alert rules to Grafana Cloud Mimir
+	@bash observability/scripts/push-alerts.sh
+
+mdf-observability-push: mdf-observability-lint mdf-observability-push-dashboards mdf-observability-push-alerts ## Lint + push everything
+
+# ---- Phase 10: HA --------------------------------------------------------
+mdf-ha-setup: ## Bring up 2-pod HA fleet: POD0_HOST=mdf-pod-eu-de-0 POD1_HOST=mdf-pod-eu-de-1
+	@if [ -z "$(POD0_HOST)" ] || [ -z "$(POD1_HOST)" ]; then \
+		echo "usage: make mdf-ha-setup POD0_HOST=mdf-pod-eu-de-0 POD1_HOST=mdf-pod-eu-de-1"; exit 1; \
+	fi
+	@POD0_HOST=$(POD0_HOST) POD1_HOST=$(POD1_HOST) bash mdf/scripts/mdf-ha-setup.sh
+
+mdf-ha-drill: ## Run a one-shot HA failover drill: POD0_HOST=... POD1_HOST=...
+	@if [ -z "$(POD0_HOST)" ] || [ -z "$(POD1_HOST)" ]; then \
+		echo "usage: make mdf-ha-drill POD0_HOST=mdf-pod-eu-de-0 POD1_HOST=mdf-pod-eu-de-1"; exit 1; \
+	fi
+	@POD0_HOST=$(POD0_HOST) POD1_HOST=$(POD1_HOST) bash mdf/scripts/mdf-failover-drill.sh
 
 docker-build: ## Build the local AOSP builder container
 	docker compose -f docker/docker-compose.yml build builder
@@ -246,8 +389,8 @@ qemu-scrcpy: qemu-adb ## Launch scrcpy against the qemu-booted device
 # Android Studio Emulator (HVF-native arm64 on Mac).
 #
 # The MayaOS emulator-target profile (galaxy-s26-ultra-emulator) lives in
-# mayaos.yaml + device-tree/mayaos/galaxy-s26-ultra/mayaos_emu_s26ultra.mk. It
-# inherits AOSP's sdk_phone64_arm64 product (so the build emits AVD-shaped
+# mayaos.yaml + aosp-tree/device/mayaos/galaxy-s26-ultra/mayaos_emu_s26ultra.mk
+# (rev-5 layered split). It inherits AOSP's sdk_phone64_arm64 product (AVD-shaped
 # artifacts: kernel-ranchu, system-qemu.img, vendor-qemu.img, etc.) and applies
 # the same Samsung Galaxy S26 Ultra branding spoof as the cuttlefish variants.
 #

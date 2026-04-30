@@ -25,7 +25,7 @@ We additionally bake a custom root CA into `/system/etc/security/cacerts/` so th
 
 ## Multi-profile architecture, single source of truth
 
-Everything that makes a build a build &mdash; AOSP branch, lunch target, branding spoof, hardware features, R2 bucket, Vast.ai sizing &mdash; lives in [`/mayaos.yaml`](mayaos.yaml). The hand-written device-tree `.mk` files stay authoritative for AOSP-internal values, but a CI parity check fails the build if `.mk` and yaml drift.
+Everything that makes a build a build &mdash; AOSP branch, lunch target, branding spoof, hardware features, R2 bucket, Vast.ai sizing &mdash; lives in [`/mayaos.yaml`](mayaos.yaml). The hand-written `.mk` files under `aosp-tree/` (per-device thin .mk + shared `vendor/mayaos/product.mk` for the spoof block) stay authoritative for AOSP-internal values, but a CI parity check fails the build if `.mk` and yaml drift.
 
 ```yaml
 # excerpt -- see mayaos.yaml for the full schema
@@ -152,22 +152,30 @@ adb shell getprop ro.build.fingerprint
 
 ```text
 .
-├── mayaos.yaml          single source of truth (multi-profile schema)
+├── mayaos.yaml            single source of truth (multi-profile schema)
 ├── docker/                AOSP build container (Ubuntu 22.04 + JDK 21 + ccache + repo + yq)
-├── device-tree/mayaos/
-│   └── galaxy-s26-ultra/  v1 profile - Samsung SM-S948B spoof + features XML
+├── aosp-tree/             rev-5 Waydroid-style 3-layer split spliced into AOSP
+│   ├── device/mayaos/<device>/   per-device .mk + features XML
+│   ├── hardware/mayaos/          shared HALs (sensors HAL in Phase 2+)
+│   ├── vendor/mayaos/            shared spoof block + Soong modules + rootdir/
+│   └── packages/apps/            in-tree apps (MayaOSUpdater in Phase 6+)
+├── command-center/        rev-5+ MayaOS Device Farm (STF fork + plugins)
+├── ota/                   rev-5+ OTA pipeline (delta builder + index)
 ├── manifests/             repo local_manifests fragment (placeholder)
 ├── ca/                    public root CA PEMs (private keys are gitignored)
 ├── pipeline/              container entrypoint + per-phase hooks
 │   └── hooks/             before-sync, after-sync, before-build (parity check), after-build
-├── vast/                  Vast.ai lifecycle scripts
+├── runpod/                RunPod lifecycle scripts (primary backend)
+├── vast/                  Vast.ai lifecycle scripts (secondary backend)
+├── docker/                Cuttlefish + qemu + emulator local-boot helpers
 ├── scripts/               gen-demo-ca, add-ca, verify-image
-├── .github/workflows/     lint.yml (incl. validate-config) + release.yml (CI-driven)
+├── .github/workflows/     lint.yml (incl. validate-config) + release.yml + ota.yml
 └── docs/
-    ├── architecture.md    pipeline architecture
-    ├── device-farm.md     consumer-side runtime architecture
-    ├── vast-runbook.md    cost optimization, troubleshooting
-    └── conscrypt-apex.md  v2 plan: rebuild APEX with our CAs
+    ├── architecture.md           pipeline architecture
+    ├── waydroid-image-layout.md  rev-5 layered split runbook
+    ├── device-farm.md            consumer-side runtime architecture
+    ├── vast-runbook.md           cost optimization, troubleshooting
+    └── conscrypt-apex.md         v2 plan: rebuild APEX with our CAs
 ```
 
 ## Cost guardrails

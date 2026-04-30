@@ -1,0 +1,19 @@
+// device/mayaos/galaxy-s26-ultra/Android.bp -- per-device modules.
+//
+// The shared command-exec binary + init.rc live in vendor/mayaos/Android.bp
+// because they are device-agnostic. Per-device feature manifests stay here
+// because the source path must resolve relative to the device dir.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+prebuilt_etc {
+    name: "mayaos_galaxy-s26-ultra-features.xml",
+    src: "sku/galaxy-s26-ultra-features.xml",
+    sub_dir: "permissions",
+    // Device-specific hardware feature flags live on the vendor partition;
+    // PackageManager scans /vendor/etc/permissions in addition to
+    // /system/etc/permissions.
+    vendor: true,
+}

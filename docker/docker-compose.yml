@@ -28,7 +28,8 @@ services:
     # Don't run privileged in production; KVM is only needed at TEST time
     # (launch_cvd), not at BUILD time. Keep this container unprivileged.
     volumes:
-      - ../device-tree:/srv/devicetree:ro
+      # rev 5: aosp-tree/ is the Waydroid-style 3-layer split.
+      - ../aosp-tree:/srv/aosp-tree:ro
       - ../ca:/srv/cacerts:ro
       - ../manifests:/srv/local_manifests:ro
       - ../mayaos.yaml:/srv/config/mayaos.yaml:ro

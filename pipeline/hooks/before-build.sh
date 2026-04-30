@@ -49,8 +49,15 @@ if ! config_present; then
     exit 0
 fi
 
-profile_dir="$(profile_get "$PID" '.device_tree' "device-tree/mayaos/${PID}")"
-profile_src_rel="${profile_dir#device-tree/}"
+profile_dir="$(profile_get "$PID" '.device_tree' "aosp-tree/device/mayaos/${PID}")"
+# `device_tree:` in mayaos.yaml is repo-relative -- aosp-tree/device/mayaos/
+# <device>/ -- and gets spliced into $SRC_DIR/device/mayaos/<device>/.
+# Strip the aosp-tree/device/ prefix so the rest is relative to
+# $SRC_DIR/device/.
+case "$profile_dir" in
+    aosp-tree/device/*) profile_src_rel="${profile_dir#aosp-tree/device/}" ;;
+    *)                  profile_src_rel="$profile_dir" ;;
+esac
 mk_name="$(profile_get "$PID" '.product_makefile' '')"
 if [[ -z "$mk_name" ]]; then
     log_error "profile '${PID}' has no product_makefile in mayaos.yaml"
@@ -70,17 +77,36 @@ y_manuf="$(profile_get "$PID" '.spoof.manufacturer' '')"
 y_model="$(profile_get "$PID" '.spoof.model' '')"
 y_fingerprint="$(profile_get "$PID" '.spoof.build_fingerprint' '')"
 
-# Pull the values from the .mk. We grep PRODUCT_BRAND :=, etc, AND the
-# matching ro.product.brand= entry in PRODUCT_PROPERTY_OVERRIDES; if either
-# drifts the parity check fails.
-mk_brand="$(awk '/^PRODUCT_BRAND[[:space:]]*:=/ \
-    {for (i=3; i<=NF; i++) printf "%s%s", $i, (i==NF?"":" ")}' "$mk_path")"
-mk_manuf="$(awk '/^PRODUCT_MANUFACTURER[[:space:]]*:=/ \
-    {for (i=3; i<=NF; i++) printf "%s%s", $i, (i==NF?"":" ")}' "$mk_path")"
-mk_model="$(awk '/^PRODUCT_MODEL[[:space:]]*:=/ \
-    {for (i=3; i<=NF; i++) printf "%s%s", $i, (i==NF?"":" ")}' "$mk_path")"
-mk_fingerprint="$(awk '/^BUILD_FINGERPRINT[[:space:]]*:=/ \
-    {for (i=3; i<=NF; i++) printf "%s%s", $i, (i==NF?"":" ")}' "$mk_path")"
+# Pull the values from the .mk(s). Rev 5 split:
+#   - per-profile .mk holds inherit-product, PRODUCT_NAME, PRODUCT_DEVICE,
+#     ABI list, OEM tag suffix.
+#   - vendor/mayaos/product.mk (inherited by every per-profile .mk) holds
+#     PRODUCT_BRAND/MODEL/MANUFACTURER and BUILD_FINGERPRINT.
+# So search both files and take the first non-empty match.
+SHARED_PRODUCT_MK="${SRC_DIR}/vendor/mayaos/product.mk"
+
+extract_mk_var() {
+    local var="$1"
+    local v
+    for f in "$mk_path" "$SHARED_PRODUCT_MK"; do
+        [[ -f "$f" ]] || continue
+        v="$(awk -v key="$var" '
+            $1 == key && $2 == ":=" {
+                for (i=3; i<=NF; i++) printf "%s%s", $i, (i==NF?"":" ")
+                exit
+            }' "$f")"
+        if [[ -n "$v" ]]; then
+            echo "$v"
+            return 0
+        fi
+    done
+    echo ""
+}
+
+mk_brand="$(extract_mk_var PRODUCT_BRAND)"
+mk_manuf="$(extract_mk_var PRODUCT_MANUFACTURER)"
+mk_model="$(extract_mk_var PRODUCT_MODEL)"
+mk_fingerprint="$(extract_mk_var BUILD_FINGERPRINT)"
 
 mismatches=0
 check_pair() {

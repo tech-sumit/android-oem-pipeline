@@ -1,0 +1,35 @@
+// vendor/mayaos/Android.bp -- shared MayaOS payload modules.
+//
+// Owns binaries/init scripts that ride on the vendor partition for every
+// MayaOS profile (independent of which device .mk is being lunched).
+//
+//   mayaos-command-exec    -> /vendor/bin/
+//       Root-owned shell script that runs operator scripts dropped under
+//       /data/vendor/mayaos/commands.d. Invoked via setprop
+//       sys.mayaos.command_exec=1.
+//   mayaos-command-exec.rc -> /vendor/etc/init/
+//       init service triggered by the property above.
+//
+// Per-device payloads (e.g. mayaos_galaxy-s26-ultra-features.xml) live in
+// the matching device/mayaos/<device>/Android.bp so the source path stays
+// scoped to that device dir (Soong rejects sources outside the module's
+// owning directory).
+//
+// Reference: waydroid/android_vendor_waydroid pattern.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+sh_binary {
+    name: "mayaos-command-exec",
+    src: "bin/mayaos-command-exec",
+    vendor: true,
+}
+
+prebuilt_etc {
+    name: "mayaos-command-exec.rc",
+    src: "etc/init/mayaos-command-exec.rc",
+    vendor: true,
+    sub_dir: "init",
+}

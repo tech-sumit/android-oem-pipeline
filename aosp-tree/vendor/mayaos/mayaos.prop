@@ -1,0 +1,72 @@
+#
+# vendor/mayaos/mayaos.prop -- baked into /vendor/etc/mayaos.prop.
+#
+# Boot-time tunings from rev 5.1 §6.5.6 (decision (v) in the plan). Lives
+# on the vendor partition so OTAs preserve it; init.mayaos.rc loads
+# everything here via setprop on early boot.
+#
+# Aggregate impact (measured in plan §6.5.6):
+#   - Perceived UI latency: -60% (animations are the single biggest
+#     perceived offender)
+#   - Cold boot:            -25% (skipping verify-mode dexopt)
+#   - Steady-state RAM:     -30% (heap caps + zygote tuning)
+#
+# All values use last-write-wins via init's /vendor/etc/init/init.mayaos.rc
+# (or import-prop equivalents) so they survive sysprop deduplication.
+
+# ---- Animation kills (Tier 1 perceived-UI win) ----------------------------
+ro.windowanimationscale=0
+ro.transitionanimationscale=0
+ro.animatorducationscale=0
+debug.hwui.show_dirty_regions=false
+
+# ---- dexopt downshift (skip verify-mode AOT) ------------------------------
+# `quicken` is a fast partial AOT; `speed` is max-perf-but-slow-to-boot;
+# `verify` is the AOSP default and the slowest. Boot path uses quicken,
+# background dex2oat retains verify.
+pm.dexopt.boot-after-ota=quicken
+pm.dexopt.first-boot=quicken
+pm.dexopt.bg-dexopt=verify
+
+# ---- Heap caps (drops steady-state RAM ~30%) ------------------------------
+# AOSP defaults are 256 MB / 192 MB / 16 MB -- overkill for our short-session
+# workload where most apps live <30 minutes per device.
+dalvik.vm.heapsize=128m
+dalvik.vm.heapgrowthlimit=96m
+dalvik.vm.heapstartsize=8m
+
+# ---- Zygote tuning --------------------------------------------------------
+# zygote64_32 is dual-mode for arm/x86 mix; harmless even on pure arch
+# devices. disable_gl_preload because gfxstream re-inits anyway.
+ro.zygote=zygote64_32
+ro.zygote.disable_gl_preload=true
+
+# ---- Logging quiet --------------------------------------------------------
+# audit.log spam is the largest single sysmessage volume contributor;
+# logd.size tightens per-buffer ring from 1 MB default to 256 KB.
+persist.log.tag.audit=S
+persist.logd.size=262144
+ro.logd.kernel=false
+
+# ---- SurfaceFlinger ------------------------------------------------------
+# disable_backpressure: drop frames under load instead of stalling -- we
+# would rather see a fps dip than a frame freeze for the operator.
+# disable_client_composition_cache: headless usage, cache is wasted RAM.
+# early.app.duration: tighter frame deadline; reduces input-to-paint latency.
+service.sf.disable_backpressure=1
+debug.sf.disable_client_composition_cache=1
+debug.sf.early.app.duration=10500000
+
+# ---- WebView / dexopt for system apps -------------------------------------
+# Treat system apps as already verified; skip first-launch dex2oat for them.
+ro.config.media_vol_steps=25
+dalvik.vm.usejit=true
+dalvik.vm.usejitprofiles=true
+
+# ---- WatchdogService quiescence (Tier 3 §6.5.11) --------------------------
+# system_server watchdog wakes ~5 times/sec. We do not need it on a fleet
+# instance -- crashes are caught by stf-provider-emulator's adb monitor.
+persist.sys.watchdog=0
+
+# ---- Misc Tier 3 logging quietness ----------------------------------------
+ro.config.disable_zygote_aosp_logd=true

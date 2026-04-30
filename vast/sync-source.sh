@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# rsync this repository (Dockerfile + pipeline + device-tree + ca + manifests)
+# rsync this repository (Dockerfile + pipeline + aosp-tree + ca + manifests)
 # to the active Vast.ai instance under /workspace/android-oem-pipeline.
 #
 # Excludes:

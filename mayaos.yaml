@@ -6,15 +6,21 @@
 # image names, R2 keys, and release tags).
 #
 # Hard rules:
-#   - The hand-written device-tree .mk files MUST stay in sync with the
-#     matching `profiles[*].spoof` block. CI's `validate-config` job enforces
-#     this -- do not bypass it; if you change branding, change both.
+#   - The hand-written device .mk files MUST stay in sync with the matching
+#     `profiles[*].spoof` block. CI's `validate-config` job enforces this --
+#     do not bypass it; if you change branding, change both.
 #   - Any *.pem under ca/ is automatically picked up by the pipeline's
 #     after-sync hook regardless of what the `cas:` list says (the list is
 #     informational and useful for humans / docs).
 #   - `vast.dph_max_usd` is a soft cap. The GH Actions workflow honours it via
 #     vast/search.sh; if no offer matches, the workflow fails fast (cheaper
 #     than letting it fall through to a $5/hr offer).
+#
+# Rev 5 (Waydroid-style 3-layer split, see plan §3): per-device .mk files
+# live under aosp-tree/device/mayaos/<device>/ and inherit the shared spoof
+# block from aosp-tree/vendor/mayaos/product.mk. The `device_tree:` field
+# below points at the device layer; the after-sync hook also splices the
+# vendor and hardware layers automatically.
 
 image:
   name: mayaos-devicefarm
@@ -32,14 +38,15 @@ aosp:
 # ---------------------------------------------------------------------------
 # Device profiles. v1 builds only `enabled: true` profiles; pipeline iterates
 # `lunch ${profile.lunch_target} && m -j` per profile and packages each into
-# its own out/<profile-id>/ subdir. The hand-written .mk for each profile
-# lives at device-tree/mayaos/<id>/mayaos_cf_<short>.mk.
+# its own out/<profile-id>/ subdir. Per-device .mk files live under
+# aosp-tree/device/mayaos/<device>/ and inherit aosp-tree/vendor/mayaos/
+# product.mk for the shared spoof block (rev 5+ Waydroid-style 3-layer split).
 # ---------------------------------------------------------------------------
 profiles:
   - id: galaxy-s26-ultra-intel-gpu
     enabled: true
     lunch_target: mayaos_cf_s26ultra-trunk_staging-userdebug
-    device_tree: device-tree/mayaos/galaxy-s26-ultra
+    device_tree: aosp-tree/device/mayaos/galaxy-s26-ultra
     product_makefile: mayaos_cf_s26ultra.mk
     runtime_target: intel-gpu
 
@@ -128,7 +135,7 @@ profiles:
   - id: galaxy-s26-ultra-apple-silicon
     enabled: true
     lunch_target: mayaos_cf_s26ultra_arm64-trunk_staging-userdebug
-    device_tree: device-tree/mayaos/galaxy-s26-ultra
+    device_tree: aosp-tree/device/mayaos/galaxy-s26-ultra
     product_makefile: mayaos_cf_s26ultra_arm64.mk
     runtime_target: apple-silicon
 
@@ -227,7 +234,7 @@ profiles:
   - id: galaxy-s26-ultra-emulator
     enabled: true
     lunch_target: mayaos_emu_s26ultra-trunk_staging-userdebug
-    device_tree: device-tree/mayaos/galaxy-s26-ultra
+    device_tree: aosp-tree/device/mayaos/galaxy-s26-ultra
     product_makefile: mayaos_emu_s26ultra.mk
     runtime_target: android-emulator-hvf
 
@@ -312,12 +319,47 @@ profiles:
         default_operator: Verizon
         country_iso: us
 
+  # x86_64 sibling of galaxy-s26-ultra-emulator; the TCG-on-RunPod fleet
+  # image. Built on the A6000 pod and consumed by the STF emulator
+  # provider. See plan §3.6 + Phase 3.
+  - id: galaxy-s26-ultra-emulator-x86
+    enabled: false                 # opt-in once Phase 3 has built+booted once
+    lunch_target: mayaos_emu_s26ultra_x86_64-trunk_staging-userdebug
+    device_tree: aosp-tree/device/mayaos/galaxy-s26-ultra
+    product_makefile: mayaos_emu_s26ultra_x86_64.mk
+    runtime_target: runpod-fleet-tcg
+
+    spoof:
+      brand: samsung
+      manufacturer: samsung
+      model: SM-S948B
+      product: s26uxxx
+      device: s26u
+      name: s26uxxx
+      build_id: BP1A.250505.005
+      build_fingerprint: "samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys"
+
+    display:
+      width_px: 1440
+      height_px: 3120
+      density_dpi: 505
+      refresh_rate_hz: 120
+      cutout: punch_hole_center
+
+    hardware:
+      ram_mb: 12288
+      cpu_cores: 8
+      fingerprint_sensor: optical_under_display
+      features: []           # mirrors galaxy-s26-ultra-emulator (load lazily)
+      camera: {}
+      telephony: {}
+
   # Scaffold for v2; `enabled: false` so v1 builds skip it. Keep the entry so
   # docs/device-farm.md and the GH Release table stay informative.
   - id: pixel-8-pro
     enabled: false
     lunch_target: mayaos_cf_pixel8pro-userdebug
-    device_tree: device-tree/mayaos/pixel-8-pro  # not yet created
+    device_tree: aosp-tree/device/mayaos/pixel-8-pro  # not yet created
     product_makefile: mayaos_cf_pixel8pro.mk
     spoof:
       brand: google
@@ -342,12 +384,15 @@ profiles:
       telephony: {}
 
 # ---------------------------------------------------------------------------
-# Custom root CAs. Any *.pem under ca/ is auto-staged into every profile's
-# device-tree/<profile>/security/cacerts/<hash>.0 by the after-sync hook.
+# Custom root CAs. Any *.pem under ca/ is auto-staged into
+# aosp-tree/vendor/mayaos/rootdir/system/etc/security/cacerts/<hash>.0 by
+# the after-sync hook (rev 5+ vendor-partition CA path; was per-profile dir).
 # This list is purely informational; do not rely on it for build behavior.
 # ---------------------------------------------------------------------------
 cas:
-  - ca/mayaos-root-ca.pem
+  - ca/mayaos-root-ca.pem  # demo CA from gen-demo-ca.sh; replace with corp root for prod
+  - ca/mdf-root-ca.pem     # MayaOS Device Farm root CA (used by mitmproxy on the pod;
+                           # private key in Vault @ secret/mdf/ca per scripts/gen-mdf-root-ca.sh)
 
 build:
   parallel_jobs: ""        # empty -> $(nproc) on the build host

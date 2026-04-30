@@ -52,13 +52,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   validate-makefiles:
-    name: validate device-tree makefiles
+    name: validate aosp-tree makefiles
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Confirm AndroidProducts.mk and product mk parse cleanly
         run: |
-          for mk in $(find device-tree -name '*.mk'); do
+          for mk in $(find aosp-tree -name '*.mk'); do
             echo "==> $mk"
             # GNU make in --warn-undefined-variables -p mode is the closest we get
             # to AOSP's makefile parser without sourcing build/envsetup.sh.
@@ -67,7 +67,7 @@ jobs:
           done
 
   validate-config:
-    name: validate mayaos.yaml + device-tree parity
+    name: validate mayaos.yaml + aosp-tree parity
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -88,23 +88,28 @@ jobs:
           echo "Profiles enabled:"
           yq eval '.profiles[] | select(.enabled == true) | .id' mayaos.yaml | sed 's/^/  - /'
 
-      - name: Per-profile parity (yaml <-> .mk <-> AndroidProducts.mk)
+      - name: Run validate-mayaos.py (aosp-tree assertions)
+        run: |
+          python3 scripts/validate-mayaos.py
+
+      - name: Per-profile parity (yaml <-> per-profile .mk <-> shared product.mk <-> AndroidProducts.mk)
         run: |
           set -Eeuo pipefail
           fail=0
+          shared_mk="aosp-tree/vendor/mayaos/product.mk"
           while IFS= read -r pid; do
             [[ -n "$pid" ]] || continue
             echo "=========================="
             echo "==  parity: ${pid}"
             echo "=========================="
 
-            mk_dir="device-tree/mayaos/${pid}"
+            mk_dir=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .device_tree" mayaos.yaml)
             mk_name=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .product_makefile" mayaos.yaml)
             mk_path="${mk_dir}/${mk_name}"
             ap_path="${mk_dir}/AndroidProducts.mk"
             lunch_target=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .lunch_target" mayaos.yaml)
 
-            for f in "$mk_path" "$ap_path"; do
+            for f in "$mk_path" "$ap_path" "$shared_mk"; do
               if [[ ! -f "$f" ]]; then
                 echo "::error::missing file: $f (profile ${pid})"
                 fail=1
@@ -120,7 +125,16 @@ jobs:
               echo "  ok  lunch_target '${lunch_target}' in AndroidProducts.mk"
             fi
 
-            # 2. spoof.brand / manufacturer / model / build_fingerprint match the .mk.
+            # 2. Per-profile .mk must inherit the shared product.mk.
+            if ! grep -qF "vendor/mayaos/product.mk" "$mk_path"; then
+              echo "::error::${pid}: ${mk_path} does not inherit vendor/mayaos/product.mk"
+              fail=1
+            else
+              echo "  ok  inherits vendor/mayaos/product.mk"
+            fi
+
+            # 3. Spoof block lives in the shared product.mk; check brand /
+            # manufacturer / model / build_fingerprint there.
             for key in brand manufacturer model build_fingerprint; do
               y=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.${key}" mayaos.yaml)
               case "$key" in
@@ -129,21 +143,21 @@ jobs:
                 model)             grep_key='PRODUCT_MODEL' ;;
                 build_fingerprint) grep_key='BUILD_FINGERPRINT' ;;
               esac
-              m=$(awk -v k="$grep_key" '$1 == k && $2 == ":=" {for(i=3;i<=NF;i++) printf "%s%s", $i, (i==NF?"":" ")}' "$mk_path")
+              m=$(awk -v k="$grep_key" '$1 == k && $2 == ":=" {for(i=3;i<=NF;i++) printf "%s%s", $i, (i==NF?"":" "); exit}' "$shared_mk")
               if [[ "$y" != "$m" ]]; then
                 echo "::error::${pid}: ${key} mismatch"
-                echo "  yaml: '${y}'"
-                echo "  mk:   '${m}'"
+                echo "  yaml:      '${y}'"
+                echo "  shared mk: '${m}'  (${shared_mk})"
                 fail=1
               else
-                echo "  ok  ${key}='${y}'"
+                echo "  ok  ${key}='${y}' (shared)"
               fi
             done
 
-            # 3. spoof.* fields also appear in PRODUCT_PROPERTY_OVERRIDES as ro.product.*.
+            # 4. spoof.brand also appears in PRODUCT_PROPERTY_OVERRIDES as ro.product.brand.
             y_brand=$(yq eval ".profiles[] | select(.id == \"${pid}\") | .spoof.brand" mayaos.yaml)
-            if ! grep -q "ro.product.brand=${y_brand}" "$mk_path"; then
-              echo "::error::${pid}: ro.product.brand=${y_brand} not present in ${mk_path}"
+            if ! grep -q "ro.product.brand=${y_brand}" "$shared_mk"; then
+              echo "::error::${pid}: ro.product.brand=${y_brand} not present in ${shared_mk}"
               fail=1
             fi
           done < <(yq eval '.profiles[] | select(.enabled == true) | .id' mayaos.yaml)
