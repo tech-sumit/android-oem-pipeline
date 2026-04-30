@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MayaOS Updater</string>
+    <string name="channel_fmt">Channel: %1$s</string>
+    <string name="version_fmt">Build: %1$s</string>
+    <string name="check_now">Check now</string>
+</resources>

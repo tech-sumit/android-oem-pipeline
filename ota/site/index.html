@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MayaOS OTA</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font: 14px/1.5 -apple-system, "SF Pro Text", system-ui, sans-serif; max-width: 920px; margin: 32px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 24px; margin: 0 0 24px; }
+  h2 { font-size: 18px; margin: 32px 0 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+  .channel-stable { color: #2c7a2c; }
+  .channel-canary { color: #b97a00; }
+  .channel-dev    { color: #6c6c6c; }
+  .latest         { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>MayaOS OTA</h1>
+<p>This page lists the most recent MayaOS builds per channel. Devices
+   poll <code>/&lt;channel&gt;.json</code>. The
+   <a href="https://github.com/sumitagrawal/n8n">build pipeline</a>
+   appends to this page after every passing build.</p>
+<div id="root">loading…</div>
+
+<script>
+async function main() {
+  const root = document.getElementById('root');
+  const idx = await fetch('/channels.json').then(r => r.json()).catch(_ => null);
+  if (!idx) { root.textContent = 'no channels.json yet'; return; }
+  const out = [];
+  out.push(`<p>generated <code>${idx.generatedAt}</code></p>`);
+  for (const [name, meta] of Object.entries(idx.channels)) {
+    out.push(`<h2 class="channel-${name}">${name}</h2>`);
+    try {
+      const ch = await fetch(`/${name}.json`).then(r => r.json());
+      out.push('<table><thead><tr><th>build</th><th>profile</th><th>fingerprint</th><th>system</th></tr></thead><tbody>');
+      for (const b of ch.builds.slice(0, 10)) {
+        const cls = (b.id === meta.latest) ? 'latest' : '';
+        out.push(`<tr class="${cls}">`);
+        out.push(`<td>${b.id}</td>`);
+        out.push(`<td>${b.profile}</td>`);
+        out.push(`<td><code>${b.fingerprint}</code></td>`);
+        out.push(`<td><a href="${b.system_img.url}">qcow2</a> <small>${b.system_img.sha256.slice(0,12)}</small></td>`);
+        out.push('</tr>');
+      }
+      out.push('</tbody></table>');
+    } catch (err) {
+      out.push(`<p><em>${name}.json unavailable: ${err.message}</em></p>`);
+    }
+  }
+  root.innerHTML = out.join('\n');
+}
+main();
+</script>
+</body>
+</html>

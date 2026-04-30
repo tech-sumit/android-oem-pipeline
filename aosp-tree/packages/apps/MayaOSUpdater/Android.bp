@@ -1,0 +1,42 @@
+// MayaOSUpdater -- system app that polls ota.mayaos.dev and hands payloads
+// to AOSP update_engine for A/B install.
+//
+// References:
+//   - waydroid/android_packages_apps_WaydroidUpdater
+//   - https://source.android.com/docs/core/ota/ab
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+android_app {
+    name: "MayaOSUpdater",
+
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    manifest: "AndroidManifest.xml",
+
+    platform_apis: true,
+    privileged: true,
+    certificate: "platform",
+    system_ext_specific: false,
+
+    static_libs: [
+        "androidx.core_core",
+        "androidx.preference_preference",
+        "androidx.work_work-runtime",
+    ],
+
+    optimize: { proguard_flags_files: ["proguard.flags"] },
+}
+
+prebuilt_etc {
+    name: "privapp-permissions-mayaos-updater.xml",
+    sub_dir: "permissions",
+    src: "privapp-permissions-mayaos-updater.xml",
+}
+
+prebuilt_etc {
+    name: "default-permissions-mayaos-updater.xml",
+    sub_dir: "default-permissions",
+    src: "default-permissions-mayaos-updater.xml",
+}

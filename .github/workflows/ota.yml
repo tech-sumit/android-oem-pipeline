@@ -1,0 +1,103 @@
+name: ota
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel to append the build to'
+        required: true
+        default: canary
+        type: choice
+        options:
+          - canary
+          - stable
+          - dev
+      build_id:
+        description: 'Build ID (e.g. 16-r6-rc1)'
+        required: true
+      profile:
+        description: 'mayaos.yaml profile id'
+        required: true
+        default: galaxy-s26-ultra-emulator-x86
+      manifest_url:
+        description: 'R2 URL of the post-build manifest.json'
+        required: true
+      notes:
+        description: 'Release notes'
+        required: false
+        default: ''
+  workflow_run:
+    workflows: ["build"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  append:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Determine inputs
+        id: inputs
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "channel=${{ inputs.channel }}"        >> $GITHUB_OUTPUT
+            echo "build_id=${{ inputs.build_id }}"     >> $GITHUB_OUTPUT
+            echo "profile=${{ inputs.profile }}"       >> $GITHUB_OUTPUT
+            echo "manifest_url=${{ inputs.manifest_url }}" >> $GITHUB_OUTPUT
+            echo "notes=${{ inputs.notes }}"           >> $GITHUB_OUTPUT
+          else
+            BUILD_ID="$(date -u +%Y%m%d.%H%M%S)"
+            echo "channel=canary" >> $GITHUB_OUTPUT
+            echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+            echo "profile=galaxy-s26-ultra-emulator-x86" >> $GITHUB_OUTPUT
+            echo "manifest_url=${{ secrets.R2_LATEST_MANIFEST_URL }}" >> $GITHUB_OUTPUT
+            echo "notes=auto-promotion of build pipeline run #${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch build manifest
+        shell: bash
+        run: |
+          mkdir -p /tmp/manifest
+          curl -fL "${{ steps.inputs.outputs.manifest_url }}" -o /tmp/manifest/manifest.json
+          jq . /tmp/manifest/manifest.json
+          for f in $(jq -r '.files | to_entries[] | .value' /tmp/manifest/manifest.json); do
+            url="$(jq -r --arg k "$(jq -r --arg fn "$f" '.files | to_entries[] | select(.value==$fn) | .key' /tmp/manifest/manifest.json)" '.r2_urls[$k]' /tmp/manifest/manifest.json)"
+            curl -fL "$url" -o "/tmp/manifest/$f"
+          done
+
+      - name: Append to channel
+        run: |
+          python ota/tools/append.py \
+            --channel  "${{ steps.inputs.outputs.channel }}" \
+            --build-id "${{ steps.inputs.outputs.build_id }}" \
+            --profile  "${{ steps.inputs.outputs.profile }}" \
+            --artifact-dir /tmp/manifest \
+            --notes    "${{ steps.inputs.outputs.notes }}"
+
+      - name: Configure git
+        run: |
+          git config user.name "Sumit Agrawal"
+          git config user.email "mr.sumitagrawal.17@gmail.com"
+
+      - name: Push to gh-pages-ota
+        run: |
+          git fetch origin gh-pages-ota || git checkout --orphan gh-pages-ota
+          git checkout -B gh-pages-ota
+          rm -rf ./*
+          cp -R ota/site/* ./
+          git add -A
+          git commit -m "ota: append ${{ steps.inputs.outputs.channel }} ${{ steps.inputs.outputs.build_id }}" || echo "nothing to commit"
+          git push origin gh-pages-ota

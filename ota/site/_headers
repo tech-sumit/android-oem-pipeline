@@ -1,0 +1,19 @@
+# Cloudflare Pages headers for ota.mayaos.dev.
+# Channels JSON should be served fresh-ish; payloads from R2 are immutable.
+
+/channels.json
+  Cache-Control: public, max-age=60, must-revalidate
+  Access-Control-Allow-Origin: *
+  Content-Type: application/json
+
+/*.json
+  Cache-Control: public, max-age=60, must-revalidate
+  Access-Control-Allow-Origin: *
+  Content-Type: application/json
+
+/index.html
+  Cache-Control: public, max-age=300
+  Content-Type: text/html; charset=utf-8
+
+/_headers
+  X-MayaOS: ota.mayaos.dev

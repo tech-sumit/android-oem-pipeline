@@ -1,0 +1,3 @@
+-keep class dev.mayaos.updater.** { *; }
+-keep class android.os.UpdateEngine
+-keep class android.os.UpdateEngineCallback

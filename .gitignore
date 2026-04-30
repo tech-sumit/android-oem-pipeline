@@ -19,7 +19,9 @@ out-*/
 ccache/
 .ccache/
 .repo/
-src/
+# AOSP working src/ at the repo root only; never the Android sources we ship
+# inside aosp-tree/packages/apps/*/src/.
+/src/
 mirror/
 
 # --- Vast.ai state ----------------------------------------------------------

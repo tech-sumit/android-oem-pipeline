@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<exceptions>
+    <exception package="dev.mayaos.updater">
+        <permission name="android.permission.INTERNET"        fixed="true" />
+        <permission name="android.permission.WAKE_LOCK"       fixed="true" />
+        <permission name="android.permission.FOREGROUND_SERVICE" fixed="true" />
+    </exception>
+</exceptions>
