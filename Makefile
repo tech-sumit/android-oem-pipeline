@@ -28,7 +28,8 @@ REMOTE_OUT ?= /workspace/aosp-out
 	cuttlefish-adb cuttlefish-scrcpy cuttlefish-status \
 	qemu-up qemu-down qemu-adb qemu-scrcpy \
 	emulator-up emulator-down emulator-adb emulator-scrcpy \
-	runpod-emulator-fetch runpod-emulator-build runpod-emulator-watch \
+	runpod-build-emulator runpod-emulator-fetch runpod-emulator-watch \
+	runpod-emulator-build-direct \
 	stock-avd-create stock-emu-up stock-emu-wait stock-scrcpy stock-emu-down \
 	gh-secrets-list gh-secrets-check r2-check
 
@@ -242,15 +243,40 @@ qemu-scrcpy: qemu-adb ## Launch scrcpy against the qemu-booted device
 	@scrcpy -s 127.0.0.1:6520
 
 # ---------------------------------------------------------------------------
-# Android Studio Emulator (HVF-native arm64 on Mac). Requires the AOSP image
-# to be built with sdk_phone64_arm64 lunch target so the output is in the
-# emulator-AVD format (kernel-ranchu, system.img, ramdisk.img, etc.).
+# Android Studio Emulator (HVF-native arm64 on Mac).
+#
+# The MayaOS emulator-target profile (galaxy-s26-ultra-emulator) lives in
+# mayaos.yaml + device-tree/mayaos/galaxy-s26-ultra/mayaos_emu_s26ultra.mk. It
+# inherits AOSP's sdk_phone64_arm64 product (so the build emits AVD-shaped
+# artifacts: kernel-ranchu, system-qemu.img, vendor-qemu.img, etc.) and applies
+# the same Samsung Galaxy S26 Ultra branding spoof as the cuttlefish variants.
+#
+# Two paths to a built bundle on the pod:
+#
+#   1. PROPER PIPELINE PATH (recommended):
+#         make runpod-build-emulator
+#      Runs the standard build pipeline (init.sh -> after-sync ->
+#      before-build -> m -> after-build) for ONLY the emulator profile. This
+#      runs all the parity checks, applies all the container-env workarounds,
+#      packages the emu/ bundle with metadata (build.prop / source.properties /
+#      package.xml), and uploads to R2 if R2_* env vars are set.
+#
+#   2. STANDALONE QUICK PATH (legacy; no metadata bundling):
+#         make runpod-emulator-build-direct
+#      Bypasses the pipeline; just runs `m droid` against the lunch target in
+#      a tmux pane. Useful for ccache-warm rebuilds when iterating on the .mk.
+#      after-build hook is NOT invoked, so the resulting artifacts have no
+#      emu/ subdir -- run.sh will regenerate metadata at boot time (legacy
+#      bundle path).
 # ---------------------------------------------------------------------------
 
-runpod-emulator-build: ## Kick a sdk_phone64_arm64 emulator-target build on the active pod
+runpod-build-emulator: ## Kick a full pipeline build for the emulator profile only on the active pod
+	@PROFILES=galaxy-s26-ultra-emulator $(MAKE) runpod-build
+
+runpod-emulator-build-direct: ## (legacy) Direct `m droid` against MayaOS emulator lunch target on the pod, bypasses the pipeline
 	./runpod/ssh.sh 'tmux new-window -t mayaos-build -n emulator -d \
 		"cd /workspace/aosp-src && source build/envsetup.sh && \
-		 lunch sdk_phone64_arm64-trunk_staging-userdebug && \
+		 lunch mayaos_emu_s26ultra-trunk_staging-userdebug && \
 		 time m -j16 droid 2>&1 | tee /workspace/aosp-logs/mayaos-emulator.log; \
 		 echo BUILD_DONE; sleep 86400"'
 
@@ -260,23 +286,35 @@ runpod-emulator-watch: ## Tail the emulator-build pane on the pod
 		ls /workspace/aosp-src/out/target/product/emu64a/*.img 2>/dev/null | wc -l | xargs -I{} echo "  {} *.img produced"; \
 		ls /workspace/aosp-src/out/target/product/emu64a/ 2>/dev/null | head -20'
 
-runpod-emulator-fetch: ## Pull emulator-target artifacts (kernel-ranchu, system.img, ...) from the pod
+runpod-emulator-fetch: ## Pull emulator-target artifacts (kernel-ranchu, system.img, ..., metadata) from the pod
 	@test -n "$(PROFILE)" || { echo "usage: make runpod-emulator-fetch PROFILE=<id>"; exit 1; }
 	@mkdir -p out/latest/$(PROFILE)/emu
+	@# Prefer the after-build hook's emu/ bundle (has metadata baked in).
+	@# Fall back to raw out/target/product/emu64a/ for legacy / direct builds.
 	@source runpod/common.sh && \
 		IFS=$$'\t' read -r user host port < <(current_pod_ssh) && \
-		for f in kernel-ranchu system.img vendor.img userdata.img ramdisk.img vbmeta.img advancedFeatures.ini; do \
-			rsync -azP --ignore-missing-args -e "ssh -i $$(ssh_key_path) -p $$port -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" \
-				"$$user@$$host:/workspace/aosp-src/out/target/product/emu64a/$$f" \
-				out/latest/$(PROFILE)/emu/ 2>&1 | tail -3; \
-		done
+		ssh_opts="-i $$(ssh_key_path) -p $$port -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" && \
+		bundle_path="/workspace/aosp-src/out/$(PROFILE)/emu/" && \
+		if ssh $$ssh_opts $$user@$$host "test -d $$bundle_path"; then \
+			echo "fetching pipeline-built bundle: $$bundle_path"; \
+			rsync -azP -e "ssh $$ssh_opts" "$$user@$$host:$$bundle_path" "out/latest/$(PROFILE)/emu/"; \
+		else \
+			echo "no bundle at $$bundle_path; falling back to raw emu64a artifacts"; \
+			for f in kernel-ranchu system.img system-qemu.img vendor.img vendor-qemu.img \
+			         userdata.img ramdisk.img ramdisk-qemu.img vbmeta.img encryptionkey.img \
+			         advancedFeatures.ini kernel_cmdline.txt VerifiedBootParams.textproto; do \
+				rsync -azP --ignore-missing-args -e "ssh $$ssh_opts" \
+					"$$user@$$host:/workspace/aosp-src/out/target/product/emu64a/$$f" \
+					out/latest/$(PROFILE)/emu/ 2>&1 | tail -3; \
+			done; \
+		fi
 
 emulator-up: ## Boot AOSP emulator AVD with PROFILE's images (background; window+adb visible)
 	@test -n "$(PROFILE)" || { echo "usage: make emulator-up PROFILE=<id>"; exit 1; }
 	PROFILE="$(PROFILE)" ./docker/emulator/run.sh
 
 emulator-down: ## Kill the running emulator
-	@pkill -f "qemu-system-aarch64.*-avd mayaos-" 2>/dev/null && echo "killed emulator" || echo "no emulator running"
+	@pkill -f "qemu-system-aarch64" 2>/dev/null && echo "killed emulator" || echo "no emulator running"
 
 emulator-adb: ## adb sees the emulator (default ports 5554/5555)
 	@adb devices | tail -n +2

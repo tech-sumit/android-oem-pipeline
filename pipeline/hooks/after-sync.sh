@@ -174,13 +174,25 @@ patch_trusty_stub_genrules() {
 #    runtime then resolves to our overrides.
 patch_board_dup_sysprop() {
     local marker="# mayaos: BUILD_BROKEN_DUP_SYSPROP for sysprop spoofing"
-    # Each MayaOS profile inherits from one of these vsoc_<arch> boards.
+    # Each MayaOS profile inherits from one of these boards.
+    #   vsoc_*  -- cuttlefish profiles (mayaos_cf_s26ultra*).
+    #   emu*    -- AOSP SDK phone targets used by the Android Studio Emulator
+    #              profile (mayaos_emu_s26ultra). emu64a is the device dir for
+    #              sdk_phone64_arm64; live under build/make/target/board/ in
+    #              modern AOSP. Older branches sometimes have them at
+    #              device/generic/<arch>/. We try both.
     # Add new ones here when introducing a new lunch target architecture.
     local boards=(
         "${SRC_DIR}/device/google/cuttlefish/vsoc_x86_64/BoardConfig.mk"
         "${SRC_DIR}/device/google/cuttlefish/vsoc_arm64/BoardConfig.mk"
         "${SRC_DIR}/device/google/cuttlefish/vsoc_x86/BoardConfig.mk"
         "${SRC_DIR}/device/google/cuttlefish/vsoc_riscv64/BoardConfig.mk"
+        "${SRC_DIR}/build/make/target/board/emu64a/BoardConfig.mk"
+        "${SRC_DIR}/build/make/target/board/emu64x/BoardConfig.mk"
+        "${SRC_DIR}/build/make/target/board/emu64x32/BoardConfig.mk"
+        "${SRC_DIR}/build/make/target/board/emu64r/BoardConfig.mk"
+        "${SRC_DIR}/device/generic/goldfish/board/BoardConfig.mk"
+        "${SRC_DIR}/device/generic/arm64/BoardConfig.mk"
     )
 
     local bc patched=0 skipped=0 missing=0

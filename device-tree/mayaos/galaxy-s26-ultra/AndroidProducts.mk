@@ -5,10 +5,13 @@
 
 PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/mayaos_cf_s26ultra.mk \
-    $(LOCAL_DIR)/mayaos_cf_s26ultra_arm64.mk
+    $(LOCAL_DIR)/mayaos_cf_s26ultra_arm64.mk \
+    $(LOCAL_DIR)/mayaos_emu_s26ultra.mk
 
 COMMON_LUNCH_CHOICES := \
     mayaos_cf_s26ultra-trunk_staging-userdebug \
     mayaos_cf_s26ultra-trunk_staging-eng \
     mayaos_cf_s26ultra_arm64-trunk_staging-userdebug \
-    mayaos_cf_s26ultra_arm64-trunk_staging-eng
+    mayaos_cf_s26ultra_arm64-trunk_staging-eng \
+    mayaos_emu_s26ultra-trunk_staging-userdebug \
+    mayaos_emu_s26ultra-trunk_staging-eng

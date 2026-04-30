@@ -207,6 +207,111 @@ profiles:
         default_operator: Verizon
         country_iso: us
 
+  # MayaOS Galaxy S26 Ultra packaged as an Android Studio Emulator system
+  # image. Inherits sdk_phone64_arm64 (so the build emits AVD-shaped artifacts:
+  # kernel-ranchu, system-qemu.img, vendor-qemu.img, etc.) and applies the
+  # same Samsung spoof block as the cuttlefish variants.
+  #
+  # Boot path on Mac (Apple Silicon):
+  #   make runpod-emulator-fetch PROFILE=galaxy-s26-ultra-emulator
+  #   make emulator-up           PROFILE=galaxy-s26-ultra-emulator
+  # The after-build hook bundles the emu/ subdir into PROFILE_OUT_DIR with
+  # a pre-rendered build.prop / source.properties / package.xml so the bundle
+  # is a self-contained Android SDK system-image package -- it can be dropped
+  # straight into $ANDROID_SDK_ROOT/system-images/android-36.1/mayaos/arm64-v8a/
+  # and `avdmanager create avd --package "system-images;android-36.1;mayaos;arm64-v8a"`
+  # will see it. Crucially this also satisfies the emulator wrapper's HVF gate
+  # (info.c::_avdInfo_extractBuildProperties reads ro.product.cpu.abi from
+  # the build.prop next to system.img; without it the wrapper falls back to
+  # "armeabi" and TCG -- emulator runs ~10x slower on Apple Silicon).
+  - id: galaxy-s26-ultra-emulator
+    enabled: true
+    lunch_target: mayaos_emu_s26ultra-trunk_staging-userdebug
+    device_tree: device-tree/mayaos/galaxy-s26-ultra
+    product_makefile: mayaos_emu_s26ultra.mk
+    runtime_target: android-emulator-hvf
+
+    spoof:
+      brand: samsung
+      manufacturer: samsung
+      model: SM-S948B
+      product: s26uxxx
+      device: s26u
+      name: s26uxxx
+      build_id: BP1A.250505.005
+      build_fingerprint: "samsung/s26uxxx/s26u:16/BP1A.250505.005/S948BXXU1AYA1:user/release-keys"
+
+    display:
+      width_px: 1440
+      height_px: 3120
+      density_dpi: 505
+      refresh_rate_hz: 120
+      cutout: punch_hole_center
+
+    hardware:
+      ram_mb: 12288
+      cpu_cores: 8
+      fingerprint_sensor: optical_under_display
+      # Same hardware feature set as the cuttlefish variants. The emulator
+      # backend lacks a real radio / NFC / fingerprint sensor; advertising
+      # the features still satisfies PackageManager.hasSystemFeature() probes
+      # so apps that would otherwise refuse to run (banking, NFC payments,
+      # etc.) load. Behaviour at runtime degrades gracefully -- e.g. NFC
+      # transactions fail at the PN54x stack level, not at the manifest gate.
+      features:
+        - android.hardware.camera
+        - android.hardware.camera.front
+        - android.hardware.camera.flash
+        - android.hardware.camera.autofocus
+        - android.hardware.camera.any
+        - android.hardware.fingerprint
+        - android.hardware.nfc
+        - android.hardware.nfc.hce
+        - android.hardware.telephony
+        - android.hardware.telephony.gsm
+        - android.hardware.sensor.accelerometer
+        - android.hardware.sensor.gyroscope
+        - android.hardware.sensor.proximity
+        - android.hardware.sensor.compass
+        - android.hardware.sensor.light
+        - android.hardware.sensor.barometer
+        - android.hardware.sensor.stepcounter
+        - android.hardware.sensor.stepdetector
+        - android.hardware.wifi
+        - android.hardware.wifi.direct
+        - android.hardware.bluetooth
+        - android.hardware.bluetooth_le
+        - android.hardware.location
+        - android.hardware.location.gps
+        - android.hardware.location.network
+        - android.hardware.usb.host
+        - android.hardware.usb.accessory
+        - android.hardware.touchscreen
+        - android.hardware.touchscreen.multitouch
+        - android.hardware.touchscreen.multitouch.distinct
+        - android.hardware.touchscreen.multitouch.jazzhand
+        - android.hardware.faketouch
+        - android.hardware.screen.portrait
+        - android.hardware.screen.landscape
+        - android.hardware.vulkan.level
+        - android.hardware.vulkan.version
+        - android.hardware.vulkan.compute
+        - android.software.app_widgets
+        - android.software.connectionservice
+        - android.software.input_methods
+        - android.software.print
+        - android.software.midi
+        - android.software.cant_save_state
+        - android.software.webview
+        - android.software.activities_on_secondary_displays
+      camera:
+        rear: ["200MP_main", "12MP_ultrawide", "10MP_tele3x", "50MP_tele5x"]
+        front: ["12MP"]
+      telephony:
+        sim_count: 2
+        default_operator: Verizon
+        country_iso: us
+
   # Scaffold for v2; `enabled: false` so v1 builds skip it. Keep the entry so
   # docs/device-farm.md and the GH Release table stay informative.
   - id: pixel-8-pro
