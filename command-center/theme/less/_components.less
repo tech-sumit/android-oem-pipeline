@@ -1,0 +1,98 @@
+// Per-component MayaOS overrides for STF.
+// Goal: nothing in the upstream UI should look stock STF after this.
+
+@import "_variables.less";
+
+.navbar.stf-navbar {
+  background: @neutral-700;
+  border-bottom: 0;
+  .navbar-brand {
+    background-image: url("/static/mayaos-logo.svg");
+    background-size: 110px;
+    background-repeat: no-repeat;
+    background-position: center left;
+    width: 130px;
+    text-indent: -9999px;
+  }
+  .version-pill {
+    background: @brand-primary;
+    color: @neutral-0;
+    border-radius: @radius-xl;
+    font-family: @font-family-mono;
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+}
+
+// Sidebar
+.aside-nav {
+  background: @neutral-700;
+  color: @neutral-100;
+  .nav-item {
+    border-radius: @radius-md;
+    margin: 4px 8px;
+  }
+  .nav-item.active, .nav-item:hover {
+    background: rgba(91, 65, 224, 0.18);
+    color: @neutral-0;
+  }
+}
+
+// Device card
+.device-card {
+  border-radius: @radius-lg;
+  background: @neutral-0;
+  border: 1px solid @neutral-200;
+  box-shadow: 0 1px 4px rgba(20, 20, 28, 0.04);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  &:hover {
+    border-color: @brand-primary;
+    box-shadow: 0 2px 8px rgba(91, 65, 224, 0.08);
+  }
+  .device-name {
+    font-weight: 600;
+    color: @neutral-700;
+  }
+  .device-status {
+    border-radius: @radius-xl;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .device-status.ready    { background: @brand-secondary-bg; color: @brand-secondary; }
+  .device-status.busy     { background: @brand-primary-bg;   color: @brand-primary;   }
+  .device-status.offline  { background: @neutral-100;         color: @neutral-500;     }
+  .channel-badge.stable  { background: rgba(48, 164, 108, 0.12); color: @brand-success; }
+  .channel-badge.canary  { background: rgba(245, 165, 36, 0.12); color: @brand-warn;    }
+  .channel-badge.dev     { background: @neutral-100;             color: @neutral-500;   }
+}
+
+// Device detail header
+.device-detail-header {
+  background: linear-gradient(135deg, @brand-primary 0%, @brand-primary-darker 100%);
+  color: @neutral-0;
+  border-radius: @radius-lg @radius-lg 0 0;
+  .info-pill {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: @radius-xl;
+    padding: 2px 10px;
+    font-size: 12px;
+  }
+}
+
+// MDF-specific plugin tabs (mitm, recording, ota, hvf)
+.mdf-tabs {
+  border-bottom: 1px solid @neutral-200;
+  .mdf-tab {
+    color: @neutral-500;
+    padding: 8px 16px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .mdf-tab.active {
+    color: @brand-primary;
+    border-bottom-color: @brand-primary;
+  }
+}

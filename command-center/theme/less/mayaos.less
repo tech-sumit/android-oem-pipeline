@@ -1,0 +1,45 @@
+// MayaOS LESS root.
+// Imported by STF's gulp pipeline via `--less-file mayaos.less`.
+
+@import "_variables.less";
+@import "_components.less";
+
+body, html {
+    font-family: @font-family-sans;
+    color: @neutral-700;
+    background: @neutral-50;
+}
+
+a, a:hover, a:visited {
+    color: @brand-primary;
+}
+
+button.btn-primary {
+    background: @brand-primary;
+    border-color: @brand-primary;
+    border-radius: @radius-md;
+    font-weight: 500;
+    transition: background 120ms ease;
+    &:hover { background: @brand-primary-darker; }
+}
+
+input, select, textarea {
+    border-radius: @radius-sm;
+    border: 1px solid @neutral-200;
+    &:focus {
+        border-color: @brand-primary;
+        outline: 0;
+        box-shadow: 0 0 0 3px rgba(91, 65, 224, 0.15);
+    }
+}
+
+// Toast notifications
+.toast {
+    border-radius: @radius-md;
+    border-left: 4px solid @brand-primary;
+    background: @neutral-0;
+    box-shadow: 0 2px 8px rgba(20, 20, 28, 0.08);
+    &.toast-success { border-left-color: @brand-success; }
+    &.toast-warn    { border-left-color: @brand-warn;    }
+    &.toast-error   { border-left-color: @brand-error;   }
+}
