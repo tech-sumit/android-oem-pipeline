@@ -3,6 +3,6 @@
 # has changed between minor versions. Re-run plugin smoke tests after bump.
 remote=https://github.com/DeviceFarmer/stf
 branch=master
-sha=73d5ad5c0a3b1f3f5f6c8a7c1e3d2b4a5e6c7d89
+sha=0b21f0c4fcbe6a146c643f28332775d791ffad2d
 tag=v3.7.2
 date=2026-04-15

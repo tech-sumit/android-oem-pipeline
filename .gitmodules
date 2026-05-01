@@ -1,0 +1,4 @@
+[submodule "command-center/stf"]
+	path = command-center/stf
+	url = https://github.com/DeviceFarmer/stf
+	branch = master
