@@ -98,7 +98,21 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
 
 WORKDIR ${STF_HOME}
 COPY stf/package*.json ./
-RUN if [ -f package.json ]; then npm ci --omit=dev; else echo "STF submodule missing -- run: git submodule update --init command-center/stf"; fi
+# Upstream DeviceFarmer/stf at v3.7.2 ships package.json but NOT
+# package-lock.json (their dev workflow uses `npm shrinkwrap` only on
+# release, and v3.7.2 wasn't tagged from a shrinkwrapped tree). `npm ci`
+# refuses to run without a lockfile, so fall back to `npm install` whose
+# only behavioral difference is that it WRITES the resulting lockfile if
+# missing -- which is fine inside a build layer.
+RUN if [ -f package.json ]; then \
+        if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then \
+            npm ci --omit=dev; \
+        else \
+            npm install --omit=dev --no-audit --no-fund; \
+        fi; \
+    else \
+        echo "STF submodule missing -- run: git submodule update --init command-center/stf"; \
+    fi
 COPY stf/ ./
 RUN if [ -f bin/stf ]; then echo "STF source present"; else echo "STF source missing"; fi
 
@@ -114,9 +128,23 @@ COPY scripts/                scripts/
 COPY perf/                   perf/
 COPY sql/                    sql/
 
-RUN cd stf-provider-emulator && npm ci --omit=dev \
+# Same lockfile-fallback story as STF: our in-tree workspaces commit
+# package.json without a lockfile (deliberate -- we want `npm install` to
+# resolve fresh deps from the registry on each image bake, not pin to a
+# stale tree). `|| true` on the plugin loops because some plugins are still
+# scaffolds without a real package.json yet.
+RUN _npm_install_dir() { \
+        local dir="$1"; \
+        if [ ! -f "$dir/package.json" ]; then return 0; fi; \
+        if [ -f "$dir/package-lock.json" ] || [ -f "$dir/npm-shrinkwrap.json" ]; then \
+            (cd "$dir" && npm ci --omit=dev); \
+        else \
+            (cd "$dir" && npm install --omit=dev --no-audit --no-fund); \
+        fi; \
+    } \
+    && _npm_install_dir stf-provider-emulator \
     && for p in mdf-plugin-mitm mdf-plugin-recording mdf-plugin-ota-channel mdf-plugin-hvf-preview mdf-plugin-warmpool; do \
-         (cd "$p" && npm ci --omit=dev) || true ; \
+         _npm_install_dir "$p" || true ; \
        done
 
 RUN install -d -m 0755 /var/lib/mdf /var/lib/mdf/instances /var/lib/mdf/snapshots \
