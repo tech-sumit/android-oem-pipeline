@@ -30,3 +30,14 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.oem.build.tag=mayaos.devicefarm.s26ultra.emu
 
 $(call inherit-product, vendor/mayaos/product.mk)
+
+# See sibling x86_64 profile for the full rationale: inherit-product treats
+# PRODUCT_BRAND / MODEL / MANUFACTURER as FIRST-NON-EMPTY single-value vars,
+# so the upstream sdk_phone64_arm64.mk body's PRODUCT_BRAND := Android wins
+# over vendor/mayaos/product.mk's PRODUCT_BRAND := samsung. Pinning the
+# Samsung values here in the leaf .mk body (after all inherits) is the only
+# guaranteed-last write and matches what upstream itself does to set
+# PRODUCT_BRAND.
+PRODUCT_BRAND        := samsung
+PRODUCT_MODEL        := SM-S948B
+PRODUCT_MANUFACTURER := samsung
