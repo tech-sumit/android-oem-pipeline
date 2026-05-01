@@ -36,6 +36,30 @@ PRODUCT_MANUFACTURER := samsung
 # build.prop. Override every partition for consistent `getprop ro.product.*`
 # output (apps and SDKs consult arbitrary partitions; if even one disagrees,
 # fingerprint-checking analytics flag the device).
+#
+# Why brand/manufacturer/model are safe but name/device are not:
+#
+#   AOSP auto-emits ro.product.<partition>.brand from $(PRODUCT_BRAND),
+#   ro.product.<partition>.manufacturer from $(PRODUCT_MANUFACTURER), and
+#   ro.product.<partition>.model from $(PRODUCT_MODEL). Since PRODUCT_BRAND
+#   etc. are already set to "samsung" / "SM-S948B" up top, our explicit
+#   overrides emit the SAME value -- post_process_props silently dedupes
+#   identical-value duplicates, so this is a no-op (but the explicitness
+#   guards against a future PRODUCT_BRAND change accidentally leaking the
+#   AOSP brand into per-partition build.prop).
+#
+#   ro.product.<partition>.name however is auto-emitted from $(PRODUCT_NAME)
+#   which we keep as "mayaos_emu_s26ultra" / "mayaos_cf_s26ultra" so the
+#   build identifies the profile internally (lunch combo, intermediates
+#   path, validate-mayaos.py expects this). Overriding to "s26uxxx" creates
+#   a differing-value duplicate and post_process_props errors out at the
+#   vendor/build.prop stage. Same story for ro.product.<partition>.device
+#   vs $(PRODUCT_DEVICE). BUILD_BROKEN_DUP_SYSPROP would normally allow it
+#   via --allow-dup but it's only honored from a BoardConfig.mk inherited
+#   by the lunch combo, and we use sdk_phone64_arm64's BoardConfig (which
+#   doesn't set it). Cleanest path: drop the conflicting name/device
+#   overrides; BUILD_FINGERPRINT (set below) carries the canonical Samsung
+#   string apps and SafetyNet replacements actually fingerprint.
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.product.brand=samsung \
     ro.product.system.brand=samsung \
@@ -54,19 +78,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.product.system_ext.model=SM-S948B \
     ro.product.product.model=SM-S948B \
     ro.product.vendor.model=SM-S948B \
-    ro.product.odm.model=SM-S948B \
-    ro.product.name=s26uxxx \
-    ro.product.system.name=s26uxxx \
-    ro.product.system_ext.name=s26uxxx \
-    ro.product.product.name=s26uxxx \
-    ro.product.vendor.name=s26uxxx \
-    ro.product.odm.name=s26uxxx \
-    ro.product.device=s26u \
-    ro.product.system.device=s26u \
-    ro.product.system_ext.device=s26u \
-    ro.product.product.device=s26u \
-    ro.product.vendor.device=s26u \
-    ro.product.odm.device=s26u
+    ro.product.odm.model=SM-S948B
 
 # Settings's "Device name" reads ro.product.marketing_name first; without
 # this it falls back to the bare ro.product.model ("SM-S948B"). Real Samsung
@@ -158,9 +170,20 @@ PRODUCT_PROPERTY_OVERRIDES += \
 
 # ---- Telephony ------------------------------------------------------------
 # Real S26 Ultra: dual-SIM (1 physical + 1 eSIM). Spoof both slots active.
+#
+# NOTE: ro.telephony.default_network is auto-set to "33" (single-slot
+# NR_LTE_GSM_WCDMA) by upstream goldfish/sdk_phone defaults at the vendor
+# partition. Overriding to "33,33" here would create a differing-value
+# duplicate that post_process_props rejects at vendor/build.prop. Until we
+# wire BUILD_BROKEN_DUP_SYSPROP into the inherited BoardConfig (or move to
+# a custom BoardConfig.mk), keep the upstream default and surface dual-SIM
+# only via persist.radio.multisim.config=dsds (which Telephony reads at
+# runtime independently of default_network). Real-world impact: emulator
+# boots single-SIM by default; mdf-plugin-warmpool can flip to dsds via
+# `setprop ro.telephony.default_network 33,33` post-boot if dual-slot tests
+# need it (init's last-write-wins resolves to our value at runtime).
 PRODUCT_PROPERTY_OVERRIDES += \
     persist.radio.multisim.config=dsds \
-    ro.telephony.default_network=33,33 \
     persist.radio.allow_pre_4g_call=1 \
     ro.config.combined_signal=true
 
