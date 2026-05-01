@@ -3,12 +3,27 @@
 MayaOS Fleet Console -- local HTTP server.
 
 Serves a single-page UI that:
-  * iframes the STF device farm UI at http://localhost:7100/
-    (port-forwarded from the fleet pod by start.sh's SSH tunnel)
+  * launches STF in a separate browser window (cookie partitioning makes
+    iframing it on a different origin a non-starter; see commit history)
+  * launches per-device STF screen popups so each device gets its own
+    first-party-cookied window with the live minicap stream
   * polls a rolling tail of the x86_64 MayaOS build log on the builder pod
   * polls a rolling tail of /var/log/stf/stf.log on the fleet pod
+  * serves /api/devices with per-device telemetry (serial, model, ready,
+    using, display dimensions) pulled live from STF's RethinkDB
 
-Architecture: per-stream daemon thread runs `ssh ... tail -F <path>` and
+Originally we tried to add a /stream/<serial> endpoint that piped a true
+h.264 video stream from each emulator via Android's `screenrecord -` ->
+ffmpeg fragmented-MP4 wrap, but Android 16's screenrecord (v1.4) dropped
+the `--output-format` flag entirely -- it now only writes complete .mp4
+files to disk after recording stops, which is useless for live streaming.
+The right replacement is the scrcpy-server JAR (Genymobile/scrcpy v3.x);
+it pushes a small Java app onto the device that opens a UNIX socket and
+streams raw h.264 NAL units, which we then forward via `adb forward`
+and remux to fragmented MP4 locally. That's a v2 follow-up; until it
+lands, devices are operated through STF's minicap pump (JPEG-per-frame).
+
+Architecture: per-log daemon thread runs `ssh ... tail -F <path>` and
 appends each line into an in-memory ring buffer; the browser polls
 GET /log/<name>?since=<seq> every second to fetch new lines. We pay the
 SSH-stream cost once (one persistent connection per pod) and serve every
@@ -96,6 +111,9 @@ def devices_loop() -> None:
     is already installed inside the STF node_modules tree on the pod -- no
     need to add a Python rethinkdb dependency on the operator's mac.
     """
+    # Pull both aggregate counts and a per-device list (serial, model, present,
+    # ready, using) from rethinkdb. The frontend uses the list to render one
+    # video card per device with the correct ready/using badges.
     snippet = (
         'const r=require("/root/mdf/stf/node_modules/rethinkdb");'
         'r.connect({host:"127.0.0.1",port:28015,db:"stf"},(e,c)=>{'
@@ -105,7 +123,16 @@ def devices_loop() -> None:
         'const total=a.length;'
         'const ready=a.filter(d=>d.present&&d.ready).length;'
         'const using=a.filter(d=>d.owner).length;'
-        'console.log(JSON.stringify({total,ready,using}));'
+        'const list=a.map(d=>({'
+        'serial:d.serial,'
+        'model:(d.model||d.product||"")+(d.abi?" ("+d.abi+")":""),'
+        'present:!!d.present,'
+        'ready:!!d.ready,'
+        'using:!!d.owner,'
+        'width:(d.display&&d.display.width)||0,'
+        'height:(d.display&&d.display.height)||0'
+        '})).sort((x,y)=>x.serial.localeCompare(y.serial));'
+        'console.log(JSON.stringify({total,ready,using,list}));'
         'c.close();'
         '});});});'
     )

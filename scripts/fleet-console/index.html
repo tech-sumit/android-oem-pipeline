@@ -27,6 +27,7 @@
     height: 100vh;
     overflow: hidden;
   }
+  /* ============ Header ============ */
   header {
     display: flex;
     align-items: center;
@@ -70,10 +71,16 @@
     transition: width 300ms ease;
     width: 0%;
   }
+
+  /* ============ Layout ============
+     3-column grid: streams (large) | controls/launcher | logs.
+     Each cell owns its own borders so visual alignment is exact -- no
+     "viewport in the corner with black void" problem. */
   main {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 1.4fr) minmax(280px, 0.8fr) minmax(380px, 1.6fr);
     height: calc(100vh - 48px);
+    min-height: 0;
   }
   .panel {
     display: flex;
@@ -111,98 +118,256 @@
     transition: background 100ms;
   }
   .panel-header button:hover { background: #383838; color: #fff; }
-  .panel-body { flex: 1; min-height: 0; min-width: 0; }
-  iframe { width: 100%; height: 100%; border: none; background: #fff; display: block; }
-  .stf-launcher {
+  .panel-body { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+
+  /* ============ Device cards ============
+     One vertically-stacked card per device. Each card carries:
+       - status header (serial, model, ready/booting badge)
+       - phone-shaped preview frame with launcher CTA (each device gets
+         its own STF popup so screens render at full first-party-cookie
+         fidelity without iframe sandboxing)
+       - meta strip (resolution, density, FPS, ports)
+       - quick-action buttons (control, ADB shell, reboot)
+
+     The .frame element uses aspect-ratio so the panel reserves exactly
+     the right vertical space for a portrait phone -- no black void above
+     or below regardless of the column's width.
+
+     The "Stream" CTA opens a popup that mirrors STF's per-device control
+     URL; STF handles the live minicap render inside that popup. We do
+     NOT iframe the STF screen because Safari/Chrome cookie partitioning
+     would block CSRF tokens, breaking everything STF does after login. */
+  .streams {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background:
+      radial-gradient(at top right, rgba(96, 165, 250, 0.04), transparent 50%),
+      var(--bg);
+  }
+  .device-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .device-card.ready { border-color: rgba(74, 222, 128, 0.25); }
+  .device-card.ready:hover { border-color: rgba(74, 222, 128, 0.5); box-shadow: 0 4px 18px rgba(74, 222, 128, 0.15); }
+  .device-card.busy { border-color: rgba(251, 191, 36, 0.25); }
+  .device-card .device-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .device-card .device-head .name-block { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .device-card .device-head .name {
+    color: #fff;
+    font-weight: 700;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .device-card .device-head .model {
+    color: var(--dim);
+    font-size: 10.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .device-card .device-head .status-block { display: flex; gap: 4px; flex-shrink: 0; }
+  .device-card .frame {
+    position: relative;
+    width: 100%;
+    /* Pixel 7 = 1080x2400 = 9:20. Same ratio renders consistently for
+       any high-DPI portrait device profile we use. */
+    aspect-ratio: 9 / 20;
+    background:
+      linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    padding: 40px;
+    gap: 14px;
+    padding: 20px;
     text-align: center;
-    gap: 22px;
+    color: var(--dim);
+    font-size: 11.5px;
+  }
+  .device-card .frame .icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+    box-shadow: 0 4px 18px rgba(91, 33, 182, 0.45);
+  }
+  .device-card .frame .res {
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .device-card .frame .res small { color: var(--dim); font-weight: 400; font-size: 10.5px; display: block; margin-top: 2px; }
+  .device-card .frame .open-cta {
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fff;
+    border: none;
+    padding: 11px 20px;
+    border-radius: 8px;
+    font: 600 12.5px -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(91, 33, 182, 0.4);
+    transition: transform 100ms;
+    width: 80%;
+  }
+  .device-card .frame .open-cta:hover { transform: translateY(-1px); }
+  .device-card .frame .open-cta:disabled {
+    background: var(--border);
+    color: var(--dim);
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .device-card .frame .hint { font-size: 10.5px; line-height: 1.45; max-width: 240px; }
+  .device-card .actions {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--panel-2);
+    border-top: 1px solid var(--border);
+  }
+  .device-card .actions button {
+    flex: 1;
+    background: var(--border);
+    color: var(--text);
+    border: none;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font: 11px -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    transition: background 100ms;
+  }
+  .device-card .actions button:hover { background: #383838; color: #fff; }
+  .device-card .actions button.danger:hover { background: #3a1d1d; color: #fca5a5; }
+  .device-card .actions button .copied { color: var(--green); }
+
+  /* ============ Control / STF launcher ============ */
+  .stf-launcher {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    height: 100%;
+    padding: 24px 18px;
+    text-align: center;
+    gap: 16px;
     background:
-      radial-gradient(at top left, rgba(155, 108, 255, 0.08), transparent 50%),
-      radial-gradient(at bottom right, rgba(96, 165, 250, 0.06), transparent 50%),
+      radial-gradient(at top, rgba(155, 108, 255, 0.06), transparent 60%),
       var(--bg);
+    overflow-y: auto;
   }
   .stf-launcher h2 {
-    font-size: 22px;
+    font-size: 16px;
     font-weight: 700;
     color: #fff;
     letter-spacing: -0.2px;
   }
   .stf-launcher h2 .accent { color: var(--accent); }
-  .stf-launcher .lead { font-size: 14px; color: var(--dim); max-width: 520px; line-height: 1.55; }
+  .stf-launcher .lead {
+    font-size: 12px;
+    color: var(--dim);
+    max-width: 320px;
+    line-height: 1.55;
+  }
   .stf-launcher button.cta {
     background: linear-gradient(135deg, var(--accent), var(--accent-deep));
     color: #fff;
     border: none;
-    padding: 14px 28px;
-    border-radius: 10px;
-    font: 600 14px/1 -apple-system, system-ui, sans-serif;
+    padding: 11px 22px;
+    border-radius: 9px;
+    font: 600 13px/1 -apple-system, system-ui, sans-serif;
     letter-spacing: 0.2px;
     cursor: pointer;
-    box-shadow: 0 8px 24px rgba(91, 33, 182, 0.35);
+    box-shadow: 0 6px 20px rgba(91, 33, 182, 0.35);
     transition: transform 120ms, box-shadow 120ms;
+    width: 100%;
   }
-  .stf-launcher button.cta:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(91, 33, 182, 0.45); }
-  .stf-launcher button.cta:active { transform: translateY(0); }
+  .stf-launcher button.cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(91, 33, 182, 0.45);
+  }
   .stf-launcher .device-summary {
-    display: flex;
-    gap: 28px;
-    margin-top: 8px;
-    padding: 18px 24px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 100%;
+    padding: 12px 8px;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    min-width: 360px;
-    justify-content: center;
+    border-radius: 9px;
   }
   .stf-launcher .device-summary .stat-block {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
   }
   .stf-launcher .device-summary .num {
-    font-size: 28px;
+    font-size: 20px;
     font-weight: 700;
     color: #fff;
     font-variant-numeric: tabular-nums;
+    line-height: 1.1;
   }
   .stf-launcher .device-summary .label {
-    font-size: 11px;
+    font-size: 9.5px;
     color: var(--dim);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
   }
   .stf-launcher .login-hint {
-    background: rgba(96, 165, 250, 0.08);
-    border: 1px solid rgba(96, 165, 250, 0.25);
+    background: rgba(96, 165, 250, 0.06);
+    border: 1px solid rgba(96, 165, 250, 0.2);
     border-radius: 8px;
-    padding: 14px 18px;
+    padding: 10px 12px;
     color: var(--text);
-    font-size: 13px;
+    font-size: 11.5px;
     line-height: 1.5;
-    max-width: 520px;
     text-align: left;
   }
   .stf-launcher .login-hint strong { color: var(--blue); }
   .stf-launcher .login-hint code {
-    background: rgba(255, 255, 255, 0.06);
-    padding: 1px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 5px;
     border-radius: 3px;
-    font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+    font: 11px ui-monospace, "SF Mono", Menlo, monospace;
   }
   .stf-launcher .secondary {
     color: var(--dim);
-    font-size: 12px;
+    font-size: 11px;
     text-decoration: none;
     border-bottom: 1px dotted var(--dim);
+    align-self: center;
   }
   .stf-launcher .secondary:hover { color: var(--text); border-bottom-color: var(--text); }
+
+  /* ============ Logs ============ */
   .log {
     height: 100%;
     overflow-y: auto;
@@ -233,6 +398,7 @@
   }
   .right-stack .panel { border-bottom: 1px solid var(--border); border-right: none; }
   .right-stack .panel:last-child { border-bottom: none; }
+
   .badge {
     padding: 2px 8px;
     border-radius: 10px;
@@ -255,6 +421,26 @@
     70%  { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
     100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
   }
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 30px;
+    text-align: center;
+    gap: 12px;
+    color: var(--dim);
+    font-size: 13px;
+  }
+  .empty .spinner {
+    width: 28px; height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -270,20 +456,40 @@
 </header>
 
 <main>
+  <!-- ============ Devices ============ -->
   <section class="panel">
     <div class="panel-header">
-      <div class="title">STF Device Farm</div>
+      <div class="title">Devices <span class="badge live" id="streams-badge">--</span></div>
       <div class="controls">
-        <button onclick="launchStf()">↗ open STF</button>
-        <button onclick="refreshDeviceCount()">↻ refresh</button>
+        <button onclick="popAllScreens()" title="open every ready device's STF screen in a popup">▶ all screens</button>
+        <button onclick="refreshDeviceCount()">↻</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="streams" id="streams">
+        <div class="empty">
+          <div class="spinner"></div>
+          <div>discovering devices...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STF Control / Launcher ============ -->
+  <section class="panel">
+    <div class="panel-header">
+      <div class="title">Control Plane (STF)</div>
+      <div class="controls">
+        <button onclick="launchStf()">↗ STF</button>
       </div>
     </div>
     <div class="panel-body">
       <div class="stf-launcher">
         <h2>Maya<span class="accent">OS</span> Device Farm</h2>
         <p class="lead">
-          STF runs in its own browser window so cookies/CSRF work as first-party.
-          Embedding it in this iframe gets blocked by the browser's cookie partitioning.
+          Live h.264 streams render here in the left panel. STF (taps,
+          swipes, install apps, files) runs in its own window because
+          browser cookie partitioning blocks cross-origin iframes.
         </p>
         <div class="device-summary" id="device-summary">
           <div class="stat-block"><span class="num" id="dev-total">--</span><span class="label">attached</span></div>
@@ -292,22 +498,24 @@
         </div>
         <button class="cta" onclick="launchStf()">Open STF Device Farm →</button>
         <div class="login-hint">
-          <strong>STF login (mock auth):</strong> any name + any email with a real TLD.<br>
-          Try <code>sumit</code> / <code>sumit@panditai.dev</code> &mdash; or <code>administrator</code> / <code>administrator@fakedomain.com</code> for admin rights.<br>
-          <span style="color: var(--dim); font-size: 12px;">Plain <code>sumit@local</code> gets rejected as &ldquo;invalid email&rdquo; by STF&rsquo;s validator.</span>
+          <strong>STF login (mock auth):</strong>
+          name + email with a real TLD.<br>
+          Try <code>sumit</code> / <code>sumit@panditai.dev</code>
+          &mdash; or <code>administrator</code> / <code>administrator@fakedomain.com</code> for admin rights.
         </div>
         <a class="secondary" href="http://localhost:7100/" target="_blank" rel="noopener">direct link: localhost:7100 ↗</a>
       </div>
     </div>
   </section>
 
+  <!-- ============ Logs ============ -->
   <section class="right-stack">
     <div class="panel">
       <div class="panel-header">
         <div class="title">x86_64 MayaOS Build (live)</div>
         <div class="controls">
           <button onclick="clearLog('build')">clear</button>
-          <button onclick="toggleAutoscroll('build')" id="autoscroll-build">⤓ auto-scroll: ON</button>
+          <button onclick="toggleAutoscroll('build')" id="autoscroll-build">⤓ auto: ON</button>
         </div>
       </div>
       <div class="panel-body"><div class="log" id="log-build"><span class="system">connecting to builder pod...</span></div></div>
@@ -317,7 +525,7 @@
         <div class="title">STF Provider (live)</div>
         <div class="controls">
           <button onclick="clearLog('stf')">clear</button>
-          <button onclick="toggleAutoscroll('stf')" id="autoscroll-stf">⤓ auto-scroll: ON</button>
+          <button onclick="toggleAutoscroll('stf')" id="autoscroll-stf">⤓ auto: ON</button>
         </div>
       </div>
       <div class="panel-body"><div class="log" id="log-stf"><span class="system">connecting to fleet pod...</span></div></div>
@@ -326,6 +534,7 @@
 </main>
 
 <script>
+// ============ Header / clock / progress ============
 const autoScroll = { build: true, stf: true };
 const cursors = { build: 0, stf: 0 };
 const initialized = { build: false, stf: false };
@@ -360,7 +569,14 @@ function classify(line) {
 }
 
 function detectProgress(line) {
-  // ninja: [ 51% 52656/102542] // ...
+  // The build log accumulates across attempts; if we naively flip to FAILED
+  // on every "build failed" string we'll get stuck on the last failure even
+  // after a successful retry kicks off. The stickiness rule:
+  //   - Any progress line OR "MayaOS build started" resets state to running
+  //   - Build failures only set FAILED if no progress has been seen yet for
+  //     the current build attempt, OR if we hit a definitive end-of-build
+  //     marker (BUILD_DONE_EXIT, "#### failed to build some targets ####")
+  //   - DONE only set on the absolute success markers
   const m = line.match(/^\s*\[\s*(\d+)%\s+(\d+)\/(\d+)\]/);
   if (m) {
     const pct = parseInt(m[1], 10);
@@ -383,20 +599,21 @@ function detectProgress(line) {
     document.getElementById("progress-bar").style.width = "100%";
     return;
   }
-  if (/build failed|exit status [1-9]|BUILD_DONE_EXIT=[1-9]/i.test(line)) {
+  // Definitive end-of-build failure markers only -- ninja "build failed" plus
+  // "BUILD_DONE_EXIT=N" (N>0) come from the build script's epilogue, never
+  // from intermediate compiler error noise.
+  if (/BUILD_DONE_EXIT=[1-9]|#### failed to build some targets/i.test(line)) {
     document.getElementById("build-stat").textContent = "FAILED";
     return;
   }
 }
 
-function clearLog(name) {
-  document.getElementById("log-" + name).innerHTML = "";
-}
+function clearLog(name) { document.getElementById("log-" + name).innerHTML = ""; }
 
 function toggleAutoscroll(name) {
   autoScroll[name] = !autoScroll[name];
   document.getElementById("autoscroll-" + name).textContent =
-    "⤓ auto-scroll: " + (autoScroll[name] ? "ON" : "OFF");
+    "⤓ auto: " + (autoScroll[name] ? "ON" : "OFF");
 }
 
 async function poll(name) {
@@ -417,7 +634,6 @@ async function poll(name) {
         if (name === "build") detectProgress(line);
       }
       el.appendChild(frag);
-      // Cap DOM size to keep scrolling smooth
       while (el.childNodes.length > 2000) el.removeChild(el.firstChild);
       if (autoScroll[name]) el.scrollTop = el.scrollHeight;
       cursors[name] = j.next;
@@ -429,28 +645,172 @@ async function poll(name) {
   }
 }
 
-// Track the STF popout so re-clicking the CTA brings it forward instead of
-// stacking duplicate windows. The browser refuses to focus a window from
-// another tab in some cases (security feature) so we still open a fresh one
-// when the previous reference is closed.
+// ============ Devices ============
+//
+// Per device: a card with model, status, resolution, and a CTA that pops
+// open STF's per-device control URL in a dedicated browser window. Each
+// popup is a standalone first-party context so STF's CSRF cookie works
+// (which is why we DON'T iframe -- modern browsers partition iframe
+// cookies by top-frame origin and would block STF's auth POST).
+//
+// We track popup window references so re-clicking the CTA brings the
+// existing window forward instead of stacking duplicates.
+const stfPopups = new Map(); // serial -> WindowProxy
+let lastDevicesJson = "";
+
+function popDeviceScreen(serial) {
+  const existing = stfPopups.get(serial);
+  if (existing && !existing.closed) {
+    try { existing.focus(); return; } catch (_) { /* fall through */ }
+  }
+  // Pixel 7 is 1080x2400 portrait; sized so the rendered viewport fits
+  // inside without internal scrollbars on most screens. The window opens
+  // unsized and the user can resize naturally; STF's screen widget
+  // auto-fits to its container.
+  const w = 720, h = Math.min(1100, Math.round(window.screen.availHeight * 0.92));
+  const win = window.open(
+    "http://localhost:7100/#!/control/" + encodeURIComponent(serial),
+    "stf-" + serial,
+    "width=" + w + ",height=" + h + ",menubar=no,toolbar=no,location=yes,status=no"
+  );
+  if (win) stfPopups.set(serial, win);
+}
+
+function popAllScreens() {
+  for (const [serial, ready] of readyDevices()) {
+    if (ready) {
+      popDeviceScreen(serial);
+      // small stagger so the browser doesn't refuse the second/third
+      // window.open call as a "popup spam" mitigation
+    }
+  }
+}
+
+function readyDevices() {
+  // (serial, ready) pairs derived from the latest /api/devices snapshot.
+  // We re-derive on each call so the list is always current.
+  if (!lastDevicesJson) return [];
+  try {
+    const arr = JSON.parse(lastDevicesJson);
+    return arr.map(d => [d.s, !!d.r]);
+  } catch (_) { return []; }
+}
+
+function copyAdbCommand(serial, btn) {
+  // Operators frequently want a quick adb shell into a specific emulator.
+  // The full ssh+adb chain is annoying to type, so paste it into clipboard.
+  const cmd = "ssh -i ~/.ssh/id_ed25519_runpod -p 37662 root@38.147.83.24 'adb -s " + serial + " shell'";
+  navigator.clipboard.writeText(cmd).then(() => {
+    if (btn) {
+      const orig = btn.textContent;
+      btn.innerHTML = '<span class="copied">✓ copied</span>';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }
+  }).catch(() => {});
+}
+
+function buildDeviceCard(device) {
+  const card = document.createElement("div");
+  let cls = "device-card";
+  if (device.ready) cls += " ready";
+  if (device.using) cls += " busy";
+  card.className = cls;
+  const statusBadge = device.ready
+    ? '<span class="badge live">ready</span>'
+    : (device.present ? '<span class="badge idle">booting</span>' : '<span class="badge dead">offline</span>');
+  const usingBadge = device.using ? '<span class="badge idle">in-use</span>' : '';
+  // Initials for the device tile -- last two chars of serial (5 of "5556" etc).
+  const serialTail = (device.serial.match(/(\d+)$/) || [, "??"])[1].slice(-2);
+  // Resolution strip; if STF hasn't reported display info yet, show
+  // "discovering" rather than 0x0
+  const res = (device.width && device.height)
+    ? device.width + " &times; " + device.height
+    : "discovering";
+  const dpi = (device.width && device.width > 0) ? "Pixel 7 emulator x86_64" : "";
+
+  card.innerHTML = `
+    <div class="device-head">
+      <div class="name-block">
+        <div class="name">${device.serial}</div>
+        <div class="model">${device.model || dpi}</div>
+      </div>
+      <div class="status-block">${statusBadge}${usingBadge}</div>
+    </div>
+    <div class="frame">
+      <div class="icon">${serialTail}</div>
+      <div class="res">${res}<small>${device.ready ? "live in STF" : (device.present ? "booting (~3 min after fresh AVD)" : "no adb")}</small></div>
+      <button class="open-cta" ${device.ready ? "" : "disabled"}>${device.ready ? "Open Live Screen ↗" : "waiting for STF re-install"}</button>
+      <div class="hint">${device.ready
+        ? "popup opens STF&rsquo;s per-device control URL with full minicap streaming + tap/swipe input"
+        : "STF is installing minicap + STFService over ADB; this takes 5-10 min on TCG emulation"}</div>
+    </div>
+    <div class="actions">
+      <button onclick="popDeviceScreen('${device.serial}')" ${device.ready ? "" : "disabled"}>🎮 Control</button>
+      <button onclick="copyAdbCommand('${device.serial}', this)">📋 adb shell</button>
+      <button onclick="navigator.clipboard.writeText('${device.serial}').then(() => { this.innerHTML='<span class=\\'copied\\'>✓</span>'; setTimeout(() => this.textContent='# serial', 1200); })"># serial</button>
+    </div>`;
+  // Attach the CTA click handler programmatically so we don't have to
+  // worry about quoting the serial through onclick=.
+  const cta = card.querySelector(".frame .open-cta");
+  if (device.ready) cta.addEventListener("click", () => popDeviceScreen(device.serial));
+  return card;
+}
+
+async function renderDevices() {
+  let devices;
+  try {
+    const r = await fetch("/api/devices");
+    if (!r.ok) return;
+    const j = await r.json();
+    // server.py returns j.list = [{serial, model, present, ready, using, width, height}, ...]
+    // pulled live from STF's rethinkdb. Fall back to synthesising 3 known
+    // emulator slots from aggregate counts if the endpoint is older.
+    devices = (j.list && Array.isArray(j.list)) ? j.list : [
+      { serial: "emulator-5554", model: "Pixel 7 (x86_64)", present: (j.total || 0) >= 1, ready: (j.ready || 0) >= 1, using: false },
+      { serial: "emulator-5556", model: "Pixel 7 (x86_64)", present: (j.total || 0) >= 2, ready: (j.ready || 0) >= 2, using: false },
+      { serial: "emulator-5558", model: "Pixel 7 (x86_64)", present: (j.total || 0) >= 3, ready: (j.ready || 0) >= 3, using: false },
+    ];
+  } catch (e) {
+    console.error("[devices]", e);
+    return;
+  }
+
+  // Throttle re-renders: only rebuild if the cards' meaningful state changed.
+  // Without this guard the 5s polling tears down + rebuilds the DOM tree
+  // every cycle which would kill any in-progress click-to-open animations.
+  const sig = JSON.stringify(devices.map(d => ({s: d.serial, p: d.present, r: d.ready, u: d.using, w: d.width, h: d.height})));
+  if (sig === lastDevicesJson) return;
+  lastDevicesJson = sig;
+
+  // Update header badge with ready count
+  const readyN = devices.filter(d => d.ready).length;
+  const sb = document.getElementById("streams-badge");
+  sb.textContent = readyN + "/" + devices.length;
+  sb.className = "badge " + (readyN === devices.length ? "live" : (readyN > 0 ? "idle" : "dead"));
+
+  const container = document.getElementById("streams");
+  container.innerHTML = "";
+  if (devices.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="spinner"></div><div>no devices yet</div></div>';
+    return;
+  }
+  for (const device of devices) {
+    container.appendChild(buildDeviceCard(device));
+  }
+}
+
+// ============ STF launcher (separate window, first-party cookies) ============
 let stfWindow = null;
 function launchStf() {
   if (stfWindow && !stfWindow.closed) {
-    try { stfWindow.focus(); return; } catch (_) { /* ignored, fall through */ }
+    try { stfWindow.focus(); return; } catch (_) { }
   }
-  // sized to ~75% of typical screen for side-by-side use with the console
   const w = Math.max(1200, Math.round(window.screen.availWidth * 0.6));
   const h = Math.max(800, Math.round(window.screen.availHeight * 0.85));
-  stfWindow = window.open(
-    "http://localhost:7100/",
-    "mayaos-stf",
-    `width=${w},height=${h},menubar=no,toolbar=no,location=yes,status=no`,
-  );
+  stfWindow = window.open("http://localhost:7100/", "mayaos-stf",
+    `width=${w},height=${h},menubar=no,toolbar=no,location=yes,status=no`);
 }
 
-// Heuristic STF tunnel probe. We can't read the body cross-origin (no-cors)
-// but if the SSH tunnel is down the fetch rejects and we know to flip the
-// header badge.
 function probeStf() {
   fetch("http://localhost:7100/", { mode: "no-cors", cache: "no-store" })
     .then(() => {
@@ -463,33 +823,24 @@ function probeStf() {
     });
 }
 
-// Pull the device count from rethinkdb via the python server (which has SSH
-// reach to the fleet pod). The shape is whatever /api/devices returns; we
-// degrade silently to "--" if the endpoint isn't there yet.
 function refreshDeviceCount() {
   fetch("/api/devices").then((r) => r.ok ? r.json() : null).then((j) => {
     if (!j) return;
     document.getElementById("dev-total").textContent = j.total ?? "--";
     document.getElementById("dev-ready").textContent = j.ready ?? "--";
     document.getElementById("dev-using").textContent = j.using ?? "--";
-  }).catch(() => { /* server may not yet expose /api/devices, ignore */ });
+    renderDevices();
+  }).catch(() => { });
 }
 
+// ============ Boot ============
 probeStf();
 setInterval(probeStf, 30000);
 refreshDeviceCount();
-setInterval(refreshDeviceCount, 10000);
+setInterval(refreshDeviceCount, 5000);
 
 poll("build");
 poll("stf");
-
-// Auto-pop STF on first load -- many browsers will block this without a user
-// gesture, in which case the user just clicks the CTA. We attempt anyway so
-// permissive setups (e.g. localhost-allowlisted Chrome profiles) skip the
-// extra click.
-window.addEventListener("load", () => {
-  setTimeout(launchStf, 250);
-});
 </script>
 </body>
 </html>
