@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground glyph for the MayaOSUpdater adaptive launcher icon: a circular
+  refresh/update arrow centered in the inner safe zone of the 108x108dp
+  adaptive canvas (drawable bounds are 108dp; safe zone is the central 66dp
+  per Material spec, which our viewport-scaled path stays inside).
+
+  Path lifted from the Material Symbols `refresh` glyph (Apache 2.0,
+  https://fonts.google.com/icons), recentered and uniformly scaled so the
+  arc + arrowhead read as a complete loop at launcher render sizes
+  (48-192px). Single white fill avoids the pre-API-30 limitation that
+  adaptive-icon foreground gradients only render correctly on devices that
+  support hardware vector blending; AOSP shipping on emu64x is fine but
+  on real S26U screens the glyph still has to look crisp at xxxhdpi.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,30
+                         A24,24 0 1 0 78,54
+                         L72,54
+                         A18,18 0 1 1 54,36
+                         L54,42
+                         L66,30
+                         L54,18
+                         Z" />
+</vector>

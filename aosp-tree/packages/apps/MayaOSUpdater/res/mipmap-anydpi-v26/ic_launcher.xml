@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive launcher icon for MayaOSUpdater. Min-sdk is Baklava (API 36) so
+  only the v26 adaptive form is shipped; pre-API-26 PNG fallbacks would be
+  dead weight on every install.
+
+  AAPT2 needs a resource literally named `ic_launcher` under any `mipmap-*/`
+  qualifier -- the `mipmap-anydpi-v26` dir is what unblocks the failure
+  mode that crashed the first MayaOSUpdater build:
+
+    error: resource mipmap/ic_launcher
+      (aka dev.mayaos.updater:mipmap/ic_launcher) not found.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
