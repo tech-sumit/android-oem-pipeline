@@ -31,6 +31,42 @@ PRODUCT_BRAND        := samsung
 PRODUCT_MODEL        := SM-S948B
 PRODUCT_MANUFACTURER := samsung
 
+# AOSP's generate-common-build-props writes
+#   ro.product.<partition>.{brand,manufacturer,model}
+# from
+#   PRODUCT_<PARTITION>_{BRAND,MANUFACTURER,MODEL}
+# NOT from the global PRODUCT_BRAND/PRODUCT_MODEL/PRODUCT_MANUFACTURER. The
+# upstream goldfish/sdk_phone_x86_64 inheritance chain sets
+#   PRODUCT_VENDOR_BRAND  := Android
+#   PRODUCT_VENDOR_MODEL  := Android SDK built for x86_64
+# at the vendor partition (build/make/target/board/generic_x86_64/BoardConfig.mk
+# pulls in emulator.mk which sets these), so without the per-partition
+# overrides below our PRODUCT_PROPERTY_OVERRIDES emits "samsung"/"SM-S948B"
+# while the auto-emitter emits "Android"/"Android SDK built for x86_64",
+# which `post_process_props.py` flags as a differing-value duplicate and
+# refuses to write vendor/build.prop. (post_process_props silently dedupes
+# IDENTICAL-value duplicates -- only a value mismatch is fatal.)
+#
+# Setting the per-partition vars makes the auto-emitter write the same
+# Samsung values, so the duplicate-with-PRODUCT_PROPERTY_OVERRIDES becomes
+# identical-value -> dedup. We do this for every partition the AOSP build
+# emits build.prop for: system, system_ext, product, vendor, odm.
+PRODUCT_SYSTEM_BRAND        := samsung
+PRODUCT_SYSTEM_MANUFACTURER := samsung
+PRODUCT_SYSTEM_MODEL        := SM-S948B
+PRODUCT_SYSTEM_EXT_BRAND        := samsung
+PRODUCT_SYSTEM_EXT_MANUFACTURER := samsung
+PRODUCT_SYSTEM_EXT_MODEL        := SM-S948B
+PRODUCT_PRODUCT_BRAND        := samsung
+PRODUCT_PRODUCT_MANUFACTURER := samsung
+PRODUCT_PRODUCT_MODEL        := SM-S948B
+PRODUCT_VENDOR_BRAND        := samsung
+PRODUCT_VENDOR_MANUFACTURER := samsung
+PRODUCT_VENDOR_MODEL        := SM-S948B
+PRODUCT_ODM_BRAND        := samsung
+PRODUCT_ODM_MANUFACTURER := samsung
+PRODUCT_ODM_MODEL        := SM-S948B
+
 # ---- ro.product.* per-partition overrides ---------------------------------
 # Modern Android emits ro.product.<partition>.* from each partition's
 # build.prop. Override every partition for consistent `getprop ro.product.*`

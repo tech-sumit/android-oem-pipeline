@@ -43,8 +43,21 @@ bool frameToEvent(const SensorEventFrame& f, Event* out) {
     out->sensorType   = static_cast<::aidl::android::hardware::sensors::SensorType>(f.sensor_type);
     out->timestamp    = (f.timestamp_ns != 0) ? f.timestamp_ns : ::android::elapsedRealtimeNano();
 
-    using ::aidl::android::hardware::sensors::Event;
-    using ::aidl::android::hardware::sensors::EventPayload;
+    // EventPayload is a NESTED parcelable inside Event in the V3 AIDL
+    // (android.hardware.sensors-V3-ndk-source/.../Event.h:52 declares it
+    // as `Event::EventPayload`). The V1/V2 surface where it lived at the
+    // top of the sensors namespace was removed before V3 was finalised,
+    // and that is exactly the API drift that blew up the first x86_64
+    // MayaOS build at 62% with:
+    //
+    //   error: no member named 'EventPayload' in namespace
+    //          'aidl::android::hardware::sensors'; did you mean
+    //          'Event::EventPayload'?
+    //
+    // Pulling it in as an alias keeps the switch arms below readable
+    // without committing to the full Event::EventPayload::Tag::xxx path
+    // on every line.
+    using EventPayload = ::aidl::android::hardware::sensors::Event::EventPayload;
 
     switch (f.sensor_type) {
         case 1:  // ACCELEROMETER
@@ -60,8 +73,19 @@ bool frameToEvent(const SensorEventFrame& f, Event* out) {
         }
         case 11:  // ROTATION_VECTOR
         {
+            // EventPayload::Data wraps a fixed-size std::array<float, 16>.
+            // The parcelable default-initialises the array to zero, so we
+            // only set the slots we actually carry: 0..3 are the quaternion
+            // components from the host wire frame; everything else stays
+            // zero. We can't brace-initialise the std::array from a smaller
+            // initializer list inside a nested-aggregate field without
+            // double braces (and even then it's awkward across compilers),
+            // so per-index assignment is the safer formulation.
             EventPayload::Data data;
-            data.values = {f.v[0], f.v[1], f.v[2], f.v[3], 0.f};
+            data.values[0] = f.v[0];
+            data.values[1] = f.v[1];
+            data.values[2] = f.v[2];
+            data.values[3] = f.v[3];
             out->payload.set<EventPayload::Tag::data>(data);
             break;
         }
@@ -72,9 +96,11 @@ bool frameToEvent(const SensorEventFrame& f, Event* out) {
         case 19:  // STEP_COUNTER
         case 20:  // STEP_DETECTOR (event-only)
         {
-            EventPayload::Single s;
-            s.value = f.v[0];
-            out->payload.set<EventPayload::Tag::scalar>(s.value);
+            // V3 collapsed the V2-era `EventPayload::Single { float value; }`
+            // wrapper into a bare `float` at Tag::scalar (the _at<scalar>
+            // alias resolves to `float` directly in the generated header).
+            // Pass the host value through with no intermediate struct.
+            out->payload.set<EventPayload::Tag::scalar>(f.v[0]);
             break;
         }
     }
