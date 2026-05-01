@@ -80,6 +80,80 @@ STREAMS: dict[str, Stream] = {
 }
 
 
+# Snapshot of device state, refreshed every DEVICE_POLL_INTERVAL seconds by
+# devices_loop(). Served by GET /api/devices. We poll on a background thread
+# so HTTP requests stay sub-millisecond instead of paying the SSH RTT each
+# time the launcher panel re-renders.
+DEVICE_POLL_INTERVAL = int(os.environ.get("DEVICE_POLL_INTERVAL", "10"))
+device_state: dict[str, object] = {"total": None, "ready": None, "using": None, "updated_at": 0}
+device_lock = threading.Lock()
+
+
+def devices_loop() -> None:
+    """Poll the fleet pod's rethinkdb for device counts.
+
+    Uses a tiny inline node.js snippet over SSH because the rethinkdb client
+    is already installed inside the STF node_modules tree on the pod -- no
+    need to add a Python rethinkdb dependency on the operator's mac.
+    """
+    snippet = (
+        'const r=require("/root/mdf/stf/node_modules/rethinkdb");'
+        'r.connect({host:"127.0.0.1",port:28015,db:"stf"},(e,c)=>{'
+        'if(e){console.log(JSON.stringify({err:String(e)}));return;}'
+        'r.table("devices").run(c,(e,cur)=>{'
+        'cur.toArray((e,a)=>{'
+        'const total=a.length;'
+        'const ready=a.filter(d=>d.present&&d.ready).length;'
+        'const using=a.filter(d=>d.owner).length;'
+        'console.log(JSON.stringify({total,ready,using}));'
+        'c.close();'
+        '});});});'
+    )
+    cmd_base = [
+        "ssh",
+        "-i",
+        SSH_KEY,
+        "-p",
+        str(FLEET_PORT),
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=15",
+        FLEET_HOST,
+    ]
+    while True:
+        try:
+            res = subprocess.run(
+                cmd_base + [f"/usr/bin/node -e '{snippet}'"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            payload = (res.stdout or "").strip().splitlines()
+            # Take the LAST line so any SSH banner / motd noise gets ignored.
+            for line in reversed(payload):
+                line = line.strip()
+                if line.startswith("{"):
+                    parsed = json.loads(line)
+                    with device_lock:
+                        if "err" in parsed:
+                            device_state["err"] = parsed["err"]
+                        else:
+                            device_state.update(parsed)
+                            device_state.pop("err", None)
+                        device_state["updated_at"] = int(time.time())
+                    break
+        except Exception as exc:
+            with device_lock:
+                device_state["err"] = repr(exc)
+                device_state["updated_at"] = int(time.time())
+        time.sleep(DEVICE_POLL_INTERVAL)
+
+
 def tail_loop(stream: Stream) -> None:
     """Spawn `ssh ... tail -F` and feed every line into the stream buffer.
 
@@ -137,6 +211,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/health":
             self._json({"ok": True, "streams": {n: STREAMS[n].seq for n in STREAMS}})
             return
+        if path == "/api/devices":
+            with device_lock:
+                snapshot = dict(device_state)
+            self._json(snapshot)
+            return
         if path.startswith("/log/"):
             name = path[len("/log/") :]
             if name not in STREAMS:
@@ -186,6 +265,7 @@ def main() -> None:
         threading.Thread(
             target=tail_loop, args=(stream,), daemon=True, name=f"tail-{stream.name}"
         ).start()
+    threading.Thread(target=devices_loop, daemon=True, name="devices").start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[fleet-console] http://localhost:{PORT}/", flush=True)
     try:

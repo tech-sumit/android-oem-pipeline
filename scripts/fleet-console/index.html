@@ -113,27 +113,96 @@
   .panel-header button:hover { background: #383838; color: #fff; }
   .panel-body { flex: 1; min-height: 0; min-width: 0; }
   iframe { width: 100%; height: 100%; border: none; background: #fff; display: block; }
-  .iframe-fallback {
-    display: none;
-    height: 100%;
+  .stf-launcher {
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
-    gap: 12px;
-    padding: 32px;
+    height: 100%;
+    padding: 40px;
     text-align: center;
+    gap: 22px;
+    background:
+      radial-gradient(at top left, rgba(155, 108, 255, 0.08), transparent 50%),
+      radial-gradient(at bottom right, rgba(96, 165, 250, 0.06), transparent 50%),
+      var(--bg);
+  }
+  .stf-launcher h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.2px;
+  }
+  .stf-launcher h2 .accent { color: var(--accent); }
+  .stf-launcher .lead { font-size: 14px; color: var(--dim); max-width: 520px; line-height: 1.55; }
+  .stf-launcher button.cta {
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fff;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 10px;
+    font: 600 14px/1 -apple-system, system-ui, sans-serif;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(91, 33, 182, 0.35);
+    transition: transform 120ms, box-shadow 120ms;
+  }
+  .stf-launcher button.cta:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(91, 33, 182, 0.45); }
+  .stf-launcher button.cta:active { transform: translateY(0); }
+  .stf-launcher .device-summary {
+    display: flex;
+    gap: 28px;
+    margin-top: 8px;
+    padding: 18px 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-width: 360px;
+    justify-content: center;
+  }
+  .stf-launcher .device-summary .stat-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .stf-launcher .device-summary .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+  .stf-launcher .device-summary .label {
+    font-size: 11px;
     color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
-  .iframe-fallback.visible { display: flex; }
-  .iframe-fallback a {
-    color: var(--accent);
+  .stf-launcher .login-hint {
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 520px;
+    text-align: left;
+  }
+  .stf-launcher .login-hint strong { color: var(--blue); }
+  .stf-launcher .login-hint code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .stf-launcher .secondary {
+    color: var(--dim);
+    font-size: 12px;
     text-decoration: none;
-    padding: 8px 16px;
-    border: 1px solid var(--accent);
-    border-radius: 6px;
-    font-weight: 500;
+    border-bottom: 1px dotted var(--dim);
   }
-  .iframe-fallback a:hover { background: var(--accent); color: #fff; }
+  .stf-launcher .secondary:hover { color: var(--text); border-bottom-color: var(--text); }
   .log {
     height: 100%;
     overflow-y: auto;
@@ -205,15 +274,29 @@
     <div class="panel-header">
       <div class="title">STF Device Farm</div>
       <div class="controls">
-        <button onclick="reloadStf()">↻ reload</button>
-        <button onclick="window.open('http://localhost:7100/', '_blank')">↗ pop out</button>
+        <button onclick="launchStf()">↗ open STF</button>
+        <button onclick="refreshDeviceCount()">↻ refresh</button>
       </div>
     </div>
     <div class="panel-body">
-      <iframe id="stf-iframe" src="http://localhost:7100/"></iframe>
-      <div class="iframe-fallback" id="stf-fallback">
-        <div>STF UI didn't load (SSH tunnel not up?).</div>
-        <a href="http://localhost:7100/" target="_blank">Open STF in new tab</a>
+      <div class="stf-launcher">
+        <h2>Maya<span class="accent">OS</span> Device Farm</h2>
+        <p class="lead">
+          STF runs in its own browser window so cookies/CSRF work as first-party.
+          Embedding it in this iframe gets blocked by the browser's cookie partitioning.
+        </p>
+        <div class="device-summary" id="device-summary">
+          <div class="stat-block"><span class="num" id="dev-total">--</span><span class="label">attached</span></div>
+          <div class="stat-block"><span class="num" id="dev-ready">--</span><span class="label">ready</span></div>
+          <div class="stat-block"><span class="num" id="dev-using">--</span><span class="label">in use</span></div>
+        </div>
+        <button class="cta" onclick="launchStf()">Open STF Device Farm →</button>
+        <div class="login-hint">
+          <strong>STF login (mock auth):</strong> any name + any email with a real TLD.<br>
+          Try <code>sumit</code> / <code>sumit@panditai.dev</code> &mdash; or <code>administrator</code> / <code>administrator@fakedomain.com</code> for admin rights.<br>
+          <span style="color: var(--dim); font-size: 12px;">Plain <code>sumit@local</code> gets rejected as &ldquo;invalid email&rdquo; by STF&rsquo;s validator.</span>
+        </div>
+        <a class="secondary" href="http://localhost:7100/" target="_blank" rel="noopener">direct link: localhost:7100 ↗</a>
       </div>
     </div>
   </section>
@@ -346,26 +429,67 @@ async function poll(name) {
   }
 }
 
-function reloadStf() {
-  const f = document.getElementById("stf-iframe");
-  // Force a real reload by reassigning src
-  const src = f.src;
-  f.src = "about:blank";
-  setTimeout(() => { f.src = src; }, 50);
+// Track the STF popout so re-clicking the CTA brings it forward instead of
+// stacking duplicate windows. The browser refuses to focus a window from
+// another tab in some cases (security feature) so we still open a fresh one
+// when the previous reference is closed.
+let stfWindow = null;
+function launchStf() {
+  if (stfWindow && !stfWindow.closed) {
+    try { stfWindow.focus(); return; } catch (_) { /* ignored, fall through */ }
+  }
+  // sized to ~75% of typical screen for side-by-side use with the console
+  const w = Math.max(1200, Math.round(window.screen.availWidth * 0.6));
+  const h = Math.max(800, Math.round(window.screen.availHeight * 0.85));
+  stfWindow = window.open(
+    "http://localhost:7100/",
+    "mayaos-stf",
+    `width=${w},height=${h},menubar=no,toolbar=no,location=yes,status=no`,
+  );
 }
 
-// Heuristic STF tunnel probe (no-cors so we can't read the response, but a
-// network failure will reject the promise and we surface that as "tunnel?").
-fetch("http://localhost:7100/", { mode: "no-cors", cache: "no-store" })
-  .catch(() => {
-    document.getElementById("stf-badge").className = "badge dead";
-    document.getElementById("stf-badge").textContent = "tunnel?";
-    document.getElementById("stf-fallback").classList.add("visible");
-    document.getElementById("stf-iframe").style.display = "none";
-  });
+// Heuristic STF tunnel probe. We can't read the body cross-origin (no-cors)
+// but if the SSH tunnel is down the fetch rejects and we know to flip the
+// header badge.
+function probeStf() {
+  fetch("http://localhost:7100/", { mode: "no-cors", cache: "no-store" })
+    .then(() => {
+      document.getElementById("stf-badge").className = "badge live";
+      document.getElementById("stf-badge").textContent = "live";
+    })
+    .catch(() => {
+      document.getElementById("stf-badge").className = "badge dead";
+      document.getElementById("stf-badge").textContent = "tunnel?";
+    });
+}
+
+// Pull the device count from rethinkdb via the python server (which has SSH
+// reach to the fleet pod). The shape is whatever /api/devices returns; we
+// degrade silently to "--" if the endpoint isn't there yet.
+function refreshDeviceCount() {
+  fetch("/api/devices").then((r) => r.ok ? r.json() : null).then((j) => {
+    if (!j) return;
+    document.getElementById("dev-total").textContent = j.total ?? "--";
+    document.getElementById("dev-ready").textContent = j.ready ?? "--";
+    document.getElementById("dev-using").textContent = j.using ?? "--";
+  }).catch(() => { /* server may not yet expose /api/devices, ignore */ });
+}
+
+probeStf();
+setInterval(probeStf, 30000);
+refreshDeviceCount();
+setInterval(refreshDeviceCount, 10000);
 
 poll("build");
 poll("stf");
+
+// Auto-pop STF on first load -- many browsers will block this without a user
+// gesture, in which case the user just clicks the CTA. We attempt anyway so
+// permissive setups (e.g. localhost-allowlisted Chrome profiles) skip the
+// extra click.
+window.addEventListener("load", () => {
+  setTimeout(launchStf, 250);
+});
 </script>
 </body>
 </html>
