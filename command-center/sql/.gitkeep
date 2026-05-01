@@ -1,0 +1,10 @@
+# Placeholder so git tracks this directory.
+#
+# RethinkDB stores its data in a binary format and our schema is created
+# programmatically by stf-app on first start (see stf/lib/db/setup.js
+# in the upstream submodule). We may add SQL-shaped reference dumps here
+# in the future for analytics/export pipelines, but the dir starts empty.
+#
+# The Dockerfile's `COPY sql/ sql/` step needs the directory to exist on
+# the build context, which means we need at least one file checked in --
+# git does not track empty directories.
