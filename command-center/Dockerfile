@@ -25,6 +25,7 @@ FROM debian:bookworm-slim
 ARG STF_REF=master
 ARG NODE_VERSION=18.20.4
 ARG MITMPROXY_VERSION=11.0.2
+ARG SCRCPY_VERSION=3.3.4
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -37,14 +38,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # adb, mitmproxy, supervisord, nginx, lsof, util-linux (taskset for cpu pinning).
 #
 # Notes on the moving parts:
-#   * scrcpy   -- not packaged in bookworm main; pulled from bookworm-backports
-#                 (the backports build is the upstream maintainer's recommended
-#                 distro path for Debian and is regularly refreshed).
+#   * scrcpy    -- NOT packaged in bookworm or bookworm-backports (it lives in
+#                  bullseye, trixie-backports, forky, and sid only). Installed
+#                  from the upstream Genymobile/scrcpy GitHub release tarball
+#                  in a separate RUN below. We do install the runtime libs
+#                  (libsdl2, libav*, libusb) here so the dynamic linker is
+#                  satisfied when the binary runs.
 #   * rethinkdb -- removed from Debian after stretch when its license was in
-#                 limbo; we install the upstream community apt repo instead.
-#                 This is the same repo recommended by openstf/stf historically.
-#   * taskset  -- not its own package; lives inside util-linux which is already
-#                 in the base image, so we drop it from the apt list.
+#                  limbo; install from the upstream community apt repo at
+#                  download.rethinkdb.com (debian-bookworm channel exists and
+#                  serves the 2.4.4 stable line, which is what STF expects).
+#   * taskset   -- not its own package; lives inside util-linux which is
+#                  already in the base image, so we drop it from the apt list.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl wget gnupg jq xz-utils \
         qemu-system-x86 qemu-utils ovmf seabios cpu-checker bridge-utils \
@@ -56,16 +61,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv \
         lsof procps psmisc util-linux \
         gosu tini \
-    && echo "deb http://deb.debian.org/debian bookworm-backports main contrib non-free" \
-        > /etc/apt/sources.list.d/backports.list \
+        libsdl2-2.0-0 libavcodec59 libavformat59 libavutil57 libswresample4 \
+        libusb-1.0-0 \
     && curl -fsSL https://download.rethinkdb.com/repository/raw/pubkey.gpg \
         | gpg --dearmor -o /usr/share/keyrings/rethinkdb-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/rethinkdb-keyring.gpg] https://download.rethinkdb.com/repository/debian-bookworm bookworm main" \
         > /etc/apt/sources.list.d/rethinkdb.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
-        -t bookworm-backports scrcpy \
+    && apt-get update \
     && apt-get install -y --no-install-recommends rethinkdb \
     && rm -rf /var/lib/apt/lists/*
+
+# scrcpy upstream-binary install. The release tarball ships:
+#   - scrcpy        (single statically-linkable binary; our libsdl2/libav*/libusb
+#                   apt installs above satisfy its dynamic deps)
+#   - scrcpy-server (Android-side dex pushed to the device on each connection;
+#                   lives in /usr/local/share/scrcpy/ where SCRCPY_SERVER_PATH
+#                   defaults to)
+#   - adb           (we keep the upstream platform-tools adb already installed
+#                   above and skip this duplicate)
+RUN curl -fsSL "https://github.com/Genymobile/scrcpy/releases/download/v${SCRCPY_VERSION}/scrcpy-linux-x86_64-v${SCRCPY_VERSION}.tar.gz" \
+        | tar -xz -C /tmp \
+    && install -m 0755 "/tmp/scrcpy-linux-x86_64-v${SCRCPY_VERSION}/scrcpy" /usr/local/bin/scrcpy \
+    && install -d -m 0755 /usr/local/share/scrcpy \
+    && install -m 0644 "/tmp/scrcpy-linux-x86_64-v${SCRCPY_VERSION}/scrcpy-server" /usr/local/share/scrcpy/scrcpy-server \
+    && rm -rf "/tmp/scrcpy-linux-x86_64-v${SCRCPY_VERSION}" \
+    && scrcpy --version 2>&1 | head -1
 
 RUN python3 -m pip install --break-system-packages --no-cache-dir \
         "mitmproxy==${MITMPROXY_VERSION}"
