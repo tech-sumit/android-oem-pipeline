@@ -15,7 +15,11 @@ cc_binary {
     name: "android.hardware.sensors-service.mayaos",
     relative_install_path: "hw",
     init_rc: ["default/sensors.mayaos.rc"],
-    vintf_fragments: ["../vintf/android.hardware.sensors-service.mayaos.xml"],
+    // Resolved through the soong module graph (see ../vintf/Android.bp) instead
+    // of a "../vintf/..." path -- the relative form passed `m` on the arm64
+    // build but trips soong's path-locality check on android_vendor_x86_64,
+    // which is what killed the first x86_64 MayaOS build at soong bootstrap.
+    vintf_fragments: [":android.hardware.sensors-service.mayaos.xml"],
     vendor: true,
 
     srcs: [

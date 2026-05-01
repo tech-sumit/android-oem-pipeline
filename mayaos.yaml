@@ -323,7 +323,13 @@ profiles:
   # image. Built on the A6000 pod and consumed by the STF emulator
   # provider. See plan §3.6 + Phase 3.
   - id: galaxy-s26-ultra-emulator-x86
-    enabled: false                 # opt-in once Phase 3 has built+booted once
+    # Enabled 2026-05-01: arm64 emu/ bundle blocked by emulator-wrapper's
+    # host-arch check ("Avd's CPU Architecture 'arm64' is not supported by
+    # the QEMU2 emulator on x86_64 host"). x86_64 runs natively in TCG with
+    # acceptable speed (~5-10x slowdown vs KVM), so the fleet pod can host
+    # 1-N of these without /dev/kvm. Phase 0 (arm64) artifacts remain in R2
+    # for Apple Silicon laptops; Phase 3 (this) is the runpod fleet image.
+    enabled: true
     lunch_target: mayaos_emu_s26ultra_x86_64-trunk_staging-userdebug
     device_tree: aosp-tree/device/mayaos/galaxy-s26-ultra
     product_makefile: mayaos_emu_s26ultra_x86_64.mk

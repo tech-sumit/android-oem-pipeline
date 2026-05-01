@@ -1,0 +1,26 @@
+// hardware/mayaos/sensors/vintf/Android.bp
+//
+// Wraps the sensors-service.mayaos vintf manifest as a soong filegroup so
+// the aidl/ Android.bp can pull it in without using a "../vintf/..." path.
+// Soong rejects relative paths that escape a module's own directory under
+// the android_vendor_x86_64 variant (and probably others on newer soong);
+// this was the actual failure mode of the first x86_64 MayaOS build:
+//
+//   error: hardware/mayaos/sensors/aidl/Android.bp:14:1:
+//     module "android.hardware.sensors-service.mayaos"
+//     variant "android_vendor_x86_64":
+//     Path is outside directory: ../vintf/android.hardware.sensors-service.mayaos.xml
+//
+// A filegroup is the canonical AOSP-blessed escape hatch -- once exposed by
+// name, vintf_fragments: [":<name>"] resolves through the module graph and
+// skips path-locality validation entirely. Same approach as
+// hardware/interfaces/sensors/aidl/default/Android.bp uses upstream.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+filegroup {
+    name: "android.hardware.sensors-service.mayaos.xml",
+    srcs: ["android.hardware.sensors-service.mayaos.xml"],
+}
