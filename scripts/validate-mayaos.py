@@ -48,6 +48,7 @@ def main() -> int:
     board_extra = _read(VENDOR / "BoardConfigExtra.mk")
     vendorsetup = _read(VENDOR / "vendorsetup.sh")
     mayaos_prop = _read(VENDOR / "mayaos.prop")
+    marketing_prop = _read(VENDOR / "marketing.prop")
 
     must_contain = [
         # mayaos.yaml profile entries.
@@ -140,7 +141,14 @@ def main() -> int:
         ("shared brand", "PRODUCT_BRAND        := samsung", shared_mk),
         ("shared manufacturer", "PRODUCT_MANUFACTURER := samsung", shared_mk),
         ("shared fingerprint", "samsung/s26uxxx/s26u:16/", shared_mk),
-        ("shared marketing name", "ro.product.marketing_name=Galaxy", shared_mk),
+        # marketing_name moved to vendor/mayaos/marketing.prop (a TARGET_SYSTEM_EXT_PROP
+        # file) because PRODUCT_PROPERTY_OVERRIDES values cannot contain whitespace --
+        # Soong splits the variable on every space when it serialises
+        # soong.<product>.extra.variables, breaking merge_json downstream.
+        ("shared marketing name (in marketing.prop)", "ro.product.marketing_name=Galaxy S26 Ultra", marketing_prop),
+        ("vendor marketing name", "ro.product.vendor.marketing_name=Galaxy S26 Ultra", marketing_prop),
+        ("system marketing name", "ro.product.system.marketing_name=Galaxy S26 Ultra", marketing_prop),
+        ("marketing.prop wired in BoardConfigExtra", "TARGET_SYSTEM_EXT_PROP += vendor/mayaos/marketing.prop", board_extra),
         ("shared OS name", "ro.product.os_name=MayaOS", shared_mk),
         ("shared mayaos.prop bake", "vendor/mayaos/mayaos.prop:vendor/etc/mayaos.prop", shared_mk),
 
@@ -251,6 +259,11 @@ def main() -> int:
         ("shared no copy file (features)", "sku/galaxy-s26-ultra-features.xml:system", shared_mk),
         ("shared no copy file (command-exec)", "vendor/bin/mayaos-command-exec:vendor/bin", shared_mk),
         ("shared no copy file (init.rc)", "vendor/etc/init/mayaos-command-exec.rc:vendor/etc/init", shared_mk),
+        # Marketing-name properties must NOT live in product.mk any more --
+        # PRODUCT_PROPERTY_OVERRIDES values with whitespace break Soong's JSON
+        # generator (see commit moving them into marketing.prop).
+        ("no marketing_name in product.mk", "ro.product.marketing_name=Galaxy", shared_mk),
+        ("no escaped-space in product.mk", "Galaxy\\ S26\\ Ultra", shared_mk),
     ]
 
     failed = [name for name, needle, hay in must_contain if needle not in hay]

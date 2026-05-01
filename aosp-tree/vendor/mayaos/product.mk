@@ -71,10 +71,15 @@ PRODUCT_PROPERTY_OVERRIDES += \
 # Settings's "Device name" reads ro.product.marketing_name first; without
 # this it falls back to the bare ro.product.model ("SM-S948B"). Real Samsung
 # firmware ships this for the consumer-friendly "Galaxy S26 Ultra" string.
-PRODUCT_PROPERTY_OVERRIDES += \
-    ro.product.marketing_name=Galaxy\ S26\ Ultra \
-    ro.product.vendor.marketing_name=Galaxy\ S26\ Ultra \
-    ro.product.system.marketing_name=Galaxy\ S26\ Ultra
+#
+# These three properties live in vendor/mayaos/marketing.prop because their
+# values contain spaces. PRODUCT_PROPERTY_OVERRIDES cannot carry whitespace
+# in values -- Soong splits the variable on every space when it serialises
+# soong.<product>.extra.variables, which breaks the JSON the next stage
+# (merge_json -> product_config.json) parses. The ".prop" file is read line
+# by line by build/make/core/Makefile and routed straight into the partition
+# build.prop, preserving spaces. Wired in via
+# vendor/mayaos/BoardConfigExtra.mk::TARGET_SYSTEM_EXT_PROP.
 
 # ---- Build identity -------------------------------------------------------
 # BUILD_FINGERPRINT is the single most-checked string by analytics/SafetyNet
@@ -103,8 +108,11 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.product.os_name=MayaOS \
     ro.product.os_version=16 \
     ro.mayaos.brand=MayaOS \
-    ro.mayaos.version=16 \
-    ro.mayaos.codename=Galaxy\ S26\ Ultra
+    ro.mayaos.version=16
+# ro.mayaos.codename is set in vendor/mayaos/marketing.prop alongside
+# the marketing_name properties (same whitespace-in-value problem --
+# Soong's PRODUCT_PROPERTY_OVERRIDES splits on every space and breaks
+# soong.<product>.extra.variables JSON).
 
 # ---- Per-OEM keys some Samsung-aware apps probe ---------------------------
 # ro.oem.build.tag is profile-specific (set in each device .mk before this

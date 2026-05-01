@@ -20,3 +20,12 @@
 # safety net for branches/boards we haven't enumerated yet.
 
 BUILD_BROKEN_DUP_SYSPROP := true
+
+# Marketing-name properties (values contain spaces) cannot live in
+# PRODUCT_PROPERTY_OVERRIDES because Soong splits the variable on
+# whitespace before serialising soong.<product>.extra.variables, which
+# corrupts the JSON for any value containing a space and crashes
+# `merge_json` at the product_config.json step. Route them through a
+# property file instead -- build/make/core/Makefile reads each line
+# verbatim into /system_ext/build.prop with spaces preserved.
+TARGET_SYSTEM_EXT_PROP += vendor/mayaos/marketing.prop

@@ -1,0 +1,21 @@
+# vendor/mayaos/marketing.prop -- emitted into /system_ext/build.prop via
+# TARGET_SYSTEM_EXT_PROP in BoardConfigExtra.mk. This file is loaded
+# verbatim by build/make/core/Makefile, so values can contain spaces
+# (unlike PRODUCT_PROPERTY_OVERRIDES, which Soong splits on whitespace
+# and produces malformed soong.<product>.extra.variables JSON for any
+# value containing a space -- the original failure mode that broke the
+# emulator build at 77% on 2026-04-30).
+#
+# Settings's "About phone -> Device name" reads ro.product.marketing_name
+# first; the per-partition twins are mirrored so getprop returns the
+# spoofed string regardless of which partition the caller queries (apps
+# and SafetyNet replacements fingerprint arbitrary partitions; if even
+# one disagrees, fingerprint-checking heuristics flag the device).
+ro.product.marketing_name=Galaxy S26 Ultra
+ro.product.vendor.marketing_name=Galaxy S26 Ultra
+ro.product.system.marketing_name=Galaxy S26 Ultra
+
+# Same whitespace-in-value rationale: kept here next to the marketing
+# names so future hands don't re-add a "ro.mayaos.codename" line to
+# product.mk and re-introduce the soong-extra-variables corruption.
+ro.mayaos.codename=Galaxy S26 Ultra
