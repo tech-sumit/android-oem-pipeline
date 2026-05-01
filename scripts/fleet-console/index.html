@@ -558,13 +558,31 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
+// Lines that contain the substring "error" but are actually benign / cosmetic.
+// AOSP-emulator + ssh-tail land enough of them in the build log that flagging
+// every one as "err" (red) makes a healthy build look on fire. Match these
+// FIRST and class them as "system" (dim) so they fade into the background.
+const BENIGN_NOISE = [
+  /Build sandboxing disabled due to nsjail error/i, // pod doesn't ship nsjail; AOSP falls back to no-sandbox, build is fine
+  /tail: cannot watch /i,                            // transient during log/symlink rotation
+  /add_lunch_combo is obsolete/i,                    // upstream deprecation warning, not an error
+  /environment variables changed value/i,            // soong informational
+  /^\s*USE_CCACHE\s*\(/i,                            // soong env-change detail line
+  /Warning: Permanently added .* to the list of known hosts/i, // ssh first-connection notice
+  /^Including .* file/i,                             // make file inclusion notice
+];
+
 function classify(line) {
   if (/^\s*\[\s*\d+%\s+\d+\/\d+\]/.test(line)) return "progress-line";
   if (/^\[fleet-console\]/.test(line)) return "system";
-  if (/error|FAILED|fatal/i.test(line)) return "err";
+  for (const re of BENIGN_NOISE) if (re.test(line)) return "system";
+  // Real failure signals -- intentionally tighter than just /error/. We catch
+  // the explicit FAILED: ninja prefix, the post_process_props "error: " line
+  // prefix, fatal/abort, and our own BUILD_DONE_EXIT=N>0 epilogue.
+  if (/^FAILED:|^error: |fatal error|fatal:|abort\(\)|BUILD_DONE_EXIT=[1-9]/i.test(line)) return "err";
   if (/^\s*warn|warning/i.test(line)) return "warn";
   if (/Providing all|Fully operational|build successful|Wrote |upload(ed)? to|BUILD_DONE_EXIT=0/i.test(line)) return "ok";
-  if (/MayaOS build started|Globs changed|product configuration|TARGET_PRODUCT/i.test(line)) return "meta";
+  if (/MayaOS build started|BUILD_START=|Globs changed|product configuration|Running globs|finishing Make module rules|TARGET_PRODUCT/i.test(line)) return "meta";
   return "";
 }
 
@@ -587,11 +605,30 @@ function detectProgress(line) {
       pct + "% (" + step.toLocaleString() + "/" + total.toLocaleString() + ")";
     return;
   }
-  const startMatch = line.match(/MayaOS build started (\S+)/);
+  // Two start markers: the upstream "MayaOS build started <ts>" emitted by
+  // run-mayaos-build.sh, and our own BUILD_START=<iso8601> wrapper marker
+  // from the nohup launcher. Either resets the timer + state.
+  const startMatch =
+    line.match(/MayaOS build started (\S+)/) ||
+    line.match(/BUILD_START=(\S+)/);
   if (startMatch) {
     buildStartTs = Date.parse(startMatch[1]);
     document.getElementById("build-stat").textContent = "starting";
     document.getElementById("progress-bar").style.width = "0%";
+    return;
+  }
+  // Soong / kati phase markers (no [N%] prefix, but still meaningful state).
+  // Show them in the status pill so the user has a heartbeat between phases.
+  if (/^Running globs/.test(line)) {
+    document.getElementById("build-stat").textContent = "soong: globs";
+    return;
+  }
+  if (/^Running product configuration/.test(line)) {
+    document.getElementById("build-stat").textContent = "soong: product config";
+    return;
+  }
+  if (/finishing Make module rules/.test(line)) {
+    document.getElementById("build-stat").textContent = "kati: make rules done";
     return;
   }
   if (/build successful|files .* uploaded|BUILD_DONE_EXIT=0/i.test(line)) {
