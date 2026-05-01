@@ -174,7 +174,9 @@ adb shell getprop ro.build.fingerprint
     ├── architecture.md           pipeline architecture
     ├── waydroid-image-layout.md  rev-5 layered split runbook
     ├── device-farm.md            consumer-side runtime architecture
-    ├── vast-runbook.md           cost optimization, troubleshooting
+    ├── vast-runbook.md           cost optimization, troubleshooting (vast.ai backend)
+    ├── build-runbook.md          RunPod build ops: cgroup OOM cap, R2 bucket scoping, resume strategy, arm64-on-x86_64 blocker
+    ├── runbook.md                fleet-side alert runbook (matches observability/alerts/*.yml)
     └── conscrypt-apex.md         v2 plan: rebuild APEX with our CAs
 ```
 

@@ -530,14 +530,24 @@
       </div>
       <div class="panel-body"><div class="log" id="log-stf"><span class="system">connecting to fleet pod...</span></div></div>
     </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="title">MayaOS x86 Deploy Watcher</div>
+        <div class="controls">
+          <button onclick="clearLog('watcher')">clear</button>
+          <button onclick="toggleAutoscroll('watcher')" id="autoscroll-watcher">⤓ auto: ON</button>
+        </div>
+      </div>
+      <div class="panel-body"><div class="log" id="log-watcher"><span class="system">waiting for build to land in R2; watcher polls every 60s and will auto-deploy MayaOS in place of stock_x86 emulators...</span></div></div>
+    </div>
   </section>
 </main>
 
 <script>
 // ============ Header / clock / progress ============
-const autoScroll = { build: true, stf: true };
-const cursors = { build: 0, stf: 0 };
-const initialized = { build: false, stf: false };
+const autoScroll = { build: true, stf: true, watcher: true };
+const cursors = { build: 0, stf: 0, watcher: 0 };
+const initialized = { build: false, stf: false, watcher: false };
 let buildStartTs = null;
 
 function fmt2(n) { return n < 10 ? "0" + n : "" + n; }
@@ -878,6 +888,7 @@ setInterval(refreshDeviceCount, 5000);
 
 poll("build");
 poll("stf");
+poll("watcher");
 </script>
 </body>
 </html>

@@ -58,6 +58,12 @@ BUILD_LOG = os.environ.get(
 FLEET_HOST = os.environ.get("FLEET_HOST", "root@38.147.83.24")
 FLEET_PORT = int(os.environ.get("FLEET_PORT", "37662"))
 STF_LOG = os.environ.get("STF_LOG", "/var/log/stf/stf.log")
+# Watcher polls R2 for the freshly-built MayaOS x86_64 emu/ bundle and, the
+# moment it appears, downloads it and replaces the stock_x86 emulators on the
+# fleet pod with MayaOS-branded ones (same adb ports, so STF re-detects the
+# new serials transparently). Surfacing its log here means the operator can
+# see the deploy phase progress in the same console as the build itself.
+WATCHER_LOG = os.environ.get("WATCHER_LOG", "/var/log/mayaos-watcher.log")
 
 BUFFER_LINES = int(os.environ.get("BUFFER_LINES", "1200"))
 
@@ -92,6 +98,7 @@ class Stream:
 STREAMS: dict[str, Stream] = {
     "build": Stream("build", BUILDER_HOST, BUILDER_PORT, BUILD_LOG),
     "stf": Stream("stf", FLEET_HOST, FLEET_PORT, STF_LOG),
+    "watcher": Stream("watcher", FLEET_HOST, FLEET_PORT, WATCHER_LOG),
 }
 
 
