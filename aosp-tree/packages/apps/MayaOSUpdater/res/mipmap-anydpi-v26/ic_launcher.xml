@@ -5,8 +5,8 @@
   dead weight on every install.
 
   AAPT2 needs a resource literally named `ic_launcher` under any `mipmap-*/`
-  qualifier -- the `mipmap-anydpi-v26` dir is what unblocks the failure
-  mode that crashed the first MayaOSUpdater build:
+  qualifier; the `mipmap-anydpi-v26` dir is what unblocks the failure mode
+  that crashed the first MayaOSUpdater build:
 
     error: resource mipmap/ic_launcher
       (aka dev.mayaos.updater:mipmap/ic_launcher) not found.
