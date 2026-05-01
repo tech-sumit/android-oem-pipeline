@@ -17,17 +17,23 @@
 // These are baked into the MayaOS vendor partition by §3 of the plan,
 // but re-pushing on first connect is idempotent and lets us also
 // upgrade them from the host without an OTA.
+//
+// Uses @devicefarmer/adbkit -- the maintained DeviceFarmer fork of the
+// original (now-deprecated) `adbkit` package. The legacy package only
+// goes up to 2.11.x and was deprecated when OpenSTF moved to DeviceFarmer.
+// The 3.x API exposes adb client surface via `Adb.createClient()` instead
+// of the top-level `createClient()` used by 2.x; we adopt the 3.x form.
 
 const path = require('path');
 const fs = require('fs').promises;
-const adbkit = require('adbkit');
+const { Adb } = require('@devicefarmer/adbkit');
 
 const AGENT_DIR = '/opt/mdf/agents';     // mounted from /var/lib/mdf/agents
 
 class AdbHelper {
   constructor({ log }) {
     this.log = log;
-    this.client = adbkit.createClient();
+    this.client = Adb.createClient();
   }
 
   async waitForDevice(serial, timeoutMs = 60_000) {

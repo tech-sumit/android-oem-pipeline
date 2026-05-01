@@ -15,7 +15,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "adbkit": "^3.2.6",
+    "@devicefarmer/adbkit": "^3.2.6",
     "express": "^4.19.2",
     "ws": "^8.18.0",
     "yargs": "^17.7.2",
