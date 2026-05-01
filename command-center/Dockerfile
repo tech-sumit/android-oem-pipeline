@@ -35,18 +35,36 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Bookworm: qemu, KVM userspace, ZMQ, OpenJDK (for STF auth + adbkit-monkey),
 # adb, mitmproxy, supervisord, nginx, lsof, util-linux (taskset for cpu pinning).
+#
+# Notes on the moving parts:
+#   * scrcpy   -- not packaged in bookworm main; pulled from bookworm-backports
+#                 (the backports build is the upstream maintainer's recommended
+#                 distro path for Debian and is regularly refreshed).
+#   * rethinkdb -- removed from Debian after stretch when its license was in
+#                 limbo; we install the upstream community apt repo instead.
+#                 This is the same repo recommended by openstf/stf historically.
+#   * taskset  -- not its own package; lives inside util-linux which is already
+#                 in the base image, so we drop it from the apt list.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl wget gnupg jq xz-utils \
         qemu-system-x86 qemu-utils ovmf seabios cpu-checker bridge-utils \
-        adb scrcpy \
+        adb \
         libzmq5 libprotobuf32 \
         graphicsmagick zip unzip \
         nginx supervisor \
-        rethinkdb \
         openjdk-17-jre-headless \
         python3 python3-pip python3-venv \
-        lsof procps psmisc taskset \
+        lsof procps psmisc util-linux \
         gosu tini \
+    && echo "deb http://deb.debian.org/debian bookworm-backports main contrib non-free" \
+        > /etc/apt/sources.list.d/backports.list \
+    && curl -fsSL https://download.rethinkdb.com/repository/raw/pubkey.gpg \
+        | gpg --dearmor -o /usr/share/keyrings/rethinkdb-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/rethinkdb-keyring.gpg] https://download.rethinkdb.com/repository/debian-bookworm bookworm main" \
+        > /etc/apt/sources.list.d/rethinkdb.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        -t bookworm-backports scrcpy \
+    && apt-get install -y --no-install-recommends rethinkdb \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --break-system-packages --no-cache-dir \
