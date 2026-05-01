@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MayaOS Fleet Console</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #141414;
+    --panel-2: #1c1c1c;
+    --border: #2a2a2a;
+    --text: #d4d4d4;
+    --dim: #888;
+    --accent: #9b6cff;
+    --accent-deep: #5b21b6;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --blue: #60a5fa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    height: 48px;
+  }
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.3px;
+  }
+  header h1 .accent { color: var(--accent); }
+  header .stat {
+    font-size: 12px;
+    color: var(--dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  header .stat strong {
+    color: var(--text);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .progress {
+    flex: 1;
+    max-width: 360px;
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+    transition: width 300ms ease;
+    width: 0%;
+  }
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    height: calc(100vh - 48px);
+  }
+  .panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .panel:last-child { border-right: none; }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    height: 36px;
+    flex: none;
+  }
+  .panel-header .title { display: flex; align-items: center; gap: 8px; }
+  .panel-header .controls { display: flex; gap: 6px; }
+  .panel-header button {
+    background: var(--border);
+    color: var(--text);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font: 11px/1 -apple-system, system-ui, sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 100ms;
+  }
+  .panel-header button:hover { background: #383838; color: #fff; }
+  .panel-body { flex: 1; min-height: 0; min-width: 0; }
+  iframe { width: 100%; height: 100%; border: none; background: #fff; display: block; }
+  .iframe-fallback {
+    display: none;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    padding: 32px;
+    text-align: center;
+    color: var(--dim);
+  }
+  .iframe-fallback.visible { display: flex; }
+  .iframe-fallback a {
+    color: var(--accent);
+    text-decoration: none;
+    padding: 8px 16px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .iframe-fallback a:hover { background: var(--accent); color: #fff; }
+  .log {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 10px 14px;
+    font: 11.5px/1.55 ui-monospace, "SF Mono", Menlo, "JetBrains Mono", monospace;
+    background: var(--bg);
+    color: var(--text);
+    white-space: pre;
+    tab-size: 4;
+  }
+  .log span { display: block; }
+  .log .progress-line { color: var(--accent); }
+  .log .err { color: var(--red); font-weight: 500; }
+  .log .warn { color: var(--amber); }
+  .log .ok { color: var(--green); }
+  .log .meta { color: var(--blue); font-style: italic; }
+  .log .system { color: var(--dim); }
+  .log::-webkit-scrollbar { width: 10px; height: 10px; }
+  .log::-webkit-scrollbar-track { background: var(--bg); }
+  .log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  .log::-webkit-scrollbar-thumb:hover { background: #444; }
+  .right-stack {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    height: 100%;
+    min-width: 0;
+  }
+  .right-stack .panel { border-bottom: 1px solid var(--border); border-right: none; }
+  .right-stack .panel:last-child { border-bottom: none; }
+  .badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .badge.live { background: rgba(74, 222, 128, 0.18); color: var(--green); }
+  .badge.dead { background: rgba(248, 113, 113, 0.18); color: var(--red); }
+  .badge.idle { background: rgba(251, 191, 36, 0.18); color: var(--amber); }
+  .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Maya<span class="accent">OS</span> Fleet Console</h1>
+  <div class="progress" title="x86_64 MayaOS build progress">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+  <div class="stat">Build: <strong id="build-stat">connecting</strong></div>
+  <div class="stat">Elapsed: <strong id="build-elapsed">--</strong></div>
+  <div class="stat">STF: <span class="badge live" id="stf-badge">live</span></div>
+  <div class="stat" style="margin-left: auto"><span class="pulse"></span><span id="now">--:--:--</span></div>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="panel-header">
+      <div class="title">STF Device Farm</div>
+      <div class="controls">
+        <button onclick="reloadStf()">↻ reload</button>
+        <button onclick="window.open('http://localhost:7100/', '_blank')">↗ pop out</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <iframe id="stf-iframe" src="http://localhost:7100/"></iframe>
+      <div class="iframe-fallback" id="stf-fallback">
+        <div>STF UI didn't load (SSH tunnel not up?).</div>
+        <a href="http://localhost:7100/" target="_blank">Open STF in new tab</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="right-stack">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="title">x86_64 MayaOS Build (live)</div>
+        <div class="controls">
+          <button onclick="clearLog('build')">clear</button>
+          <button onclick="toggleAutoscroll('build')" id="autoscroll-build">⤓ auto-scroll: ON</button>
+        </div>
+      </div>
+      <div class="panel-body"><div class="log" id="log-build"><span class="system">connecting to builder pod...</span></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="title">STF Provider (live)</div>
+        <div class="controls">
+          <button onclick="clearLog('stf')">clear</button>
+          <button onclick="toggleAutoscroll('stf')" id="autoscroll-stf">⤓ auto-scroll: ON</button>
+        </div>
+      </div>
+      <div class="panel-body"><div class="log" id="log-stf"><span class="system">connecting to fleet pod...</span></div></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const autoScroll = { build: true, stf: true };
+const cursors = { build: 0, stf: 0 };
+const initialized = { build: false, stf: false };
+let buildStartTs = null;
+
+function fmt2(n) { return n < 10 ? "0" + n : "" + n; }
+
+function updateClock() {
+  const d = new Date();
+  document.getElementById("now").textContent =
+    fmt2(d.getHours()) + ":" + fmt2(d.getMinutes()) + ":" + fmt2(d.getSeconds());
+  if (buildStartTs) {
+    const sec = Math.max(0, Math.floor((Date.now() - buildStartTs) / 1000));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    document.getElementById("build-elapsed").textContent =
+      h > 0 ? `${h}h${fmt2(m)}m${fmt2(s)}s` : `${m}m${fmt2(s)}s`;
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function classify(line) {
+  if (/^\s*\[\s*\d+%\s+\d+\/\d+\]/.test(line)) return "progress-line";
+  if (/^\[fleet-console\]/.test(line)) return "system";
+  if (/error|FAILED|fatal/i.test(line)) return "err";
+  if (/^\s*warn|warning/i.test(line)) return "warn";
+  if (/Providing all|Fully operational|build successful|Wrote |upload(ed)? to|BUILD_DONE_EXIT=0/i.test(line)) return "ok";
+  if (/MayaOS build started|Globs changed|product configuration|TARGET_PRODUCT/i.test(line)) return "meta";
+  return "";
+}
+
+function detectProgress(line) {
+  // ninja: [ 51% 52656/102542] // ...
+  const m = line.match(/^\s*\[\s*(\d+)%\s+(\d+)\/(\d+)\]/);
+  if (m) {
+    const pct = parseInt(m[1], 10);
+    const step = parseInt(m[2], 10);
+    const total = parseInt(m[3], 10);
+    document.getElementById("progress-bar").style.width = pct + "%";
+    document.getElementById("build-stat").textContent =
+      pct + "% (" + step.toLocaleString() + "/" + total.toLocaleString() + ")";
+    return;
+  }
+  const startMatch = line.match(/MayaOS build started (\S+)/);
+  if (startMatch) {
+    buildStartTs = Date.parse(startMatch[1]);
+    document.getElementById("build-stat").textContent = "starting";
+    document.getElementById("progress-bar").style.width = "0%";
+    return;
+  }
+  if (/build successful|files .* uploaded|BUILD_DONE_EXIT=0/i.test(line)) {
+    document.getElementById("build-stat").textContent = "DONE";
+    document.getElementById("progress-bar").style.width = "100%";
+    return;
+  }
+  if (/build failed|exit status [1-9]|BUILD_DONE_EXIT=[1-9]/i.test(line)) {
+    document.getElementById("build-stat").textContent = "FAILED";
+    return;
+  }
+}
+
+function clearLog(name) {
+  document.getElementById("log-" + name).innerHTML = "";
+}
+
+function toggleAutoscroll(name) {
+  autoScroll[name] = !autoScroll[name];
+  document.getElementById("autoscroll-" + name).textContent =
+    "⤓ auto-scroll: " + (autoScroll[name] ? "ON" : "OFF");
+}
+
+async function poll(name) {
+  try {
+    const r = await fetch("/log/" + name + "?since=" + cursors[name]);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    if (j.lines.length > 0) {
+      const el = document.getElementById("log-" + name);
+      if (!initialized[name]) { el.innerHTML = ""; initialized[name] = true; }
+      const frag = document.createDocumentFragment();
+      for (const [, line] of j.lines) {
+        const span = document.createElement("span");
+        const cls = classify(line);
+        if (cls) span.className = cls;
+        span.textContent = line;
+        frag.appendChild(span);
+        if (name === "build") detectProgress(line);
+      }
+      el.appendChild(frag);
+      // Cap DOM size to keep scrolling smooth
+      while (el.childNodes.length > 2000) el.removeChild(el.firstChild);
+      if (autoScroll[name]) el.scrollTop = el.scrollHeight;
+      cursors[name] = j.next;
+    }
+  } catch (e) {
+    console.error("[" + name + "] poll error:", e);
+  } finally {
+    setTimeout(() => poll(name), 1000);
+  }
+}
+
+function reloadStf() {
+  const f = document.getElementById("stf-iframe");
+  // Force a real reload by reassigning src
+  const src = f.src;
+  f.src = "about:blank";
+  setTimeout(() => { f.src = src; }, 50);
+}
+
+// Heuristic STF tunnel probe (no-cors so we can't read the response, but a
+// network failure will reject the promise and we surface that as "tunnel?").
+fetch("http://localhost:7100/", { mode: "no-cors", cache: "no-store" })
+  .catch(() => {
+    document.getElementById("stf-badge").className = "badge dead";
+    document.getElementById("stf-badge").textContent = "tunnel?";
+    document.getElementById("stf-fallback").classList.add("visible");
+    document.getElementById("stf-iframe").style.display = "none";
+  });
+
+poll("build");
+poll("stf");
+</script>
+</body>
+</html>
